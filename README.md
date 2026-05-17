@@ -67,3 +67,8 @@ playwright install chromium
 
 streamlit run app.py
 ```
+
+----------------------------------------------------------
+## 4. ERD
+
+![ERD](assets/ERD.png)
