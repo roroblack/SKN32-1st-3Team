@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from typing import Literal
 
 import pandas as pd
@@ -6,7 +7,8 @@ from dataclasses import asdict, fields
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from model.models import CarRegistrationItem, FaqItem, StationItem
+
+from crawling.models import *
 
 # DB 작업을 처리하는 클래스이다.
 class Repository:
@@ -36,7 +38,7 @@ class Repository:
             )
         ''',
         StationItem:'''
-            INSERT INTO station (
+            INSERT INTO hydrogen_charging_station (
                 region_id,
                 station_name,
                 address,
@@ -51,6 +53,13 @@ class Repository:
                 :lon
             )
         '''
+    }
+
+    # 아이템의 모델에 따라 마지막 크롤링 시간을 갱신할 레코드를 지정한다.
+    MODEL_TARGET_TYPE = {
+        CarRegistrationItem : 'car_registration',
+        FaqItem : 'faq',
+        StationItem : 'station'
     }
 
     def __init__(self):
@@ -68,7 +77,7 @@ class Repository:
         port = os.getenv('DB_PORT', 3306)
         user = os.getenv('DB_USER', 'student')
         password = os.getenv('DB_PASSWORD', 'student80')
-        db_name = os.getenv('DB_NAME', 'mydb')
+        db_name = os.getenv('DB_NAME', 'crawler_db')
 
         # DB에 접속하기 위한 DB URL을 만든다.
         # 한글을 안전하게 저장하기 위해 utf8mb4 문자셋을 사용한다.
@@ -113,6 +122,15 @@ class Repository:
         # 아이템 리스트를 파라미터 리스트로 변환한다.
         params_list = [self._item_to_params(item, column_names) for item in items]
 
+        # 아이템의 모델에 따라 마지막 크롤링 시간을 갱신할 레코드를 지정한다.
+        # 마지막 크롤링 시간을 갱신할 SQL을 만든다.
+        target_type = self.MODEL_TARGET_TYPE[model_class]
+        update_crawl_stat_sql = '''
+            UPDATE crawl_stat
+            SET last_crawled_at = :last_crawled_at
+            WHERE target_type = :target_type
+        '''
+
         # begin() : 한 블록 안에서 트랜잭션을 처리한다.
         #   정상 종료되면 자동으로 commit 처리된다.
         #   예외가 생기면 자동으로 rollback 처리된다.
@@ -121,7 +139,15 @@ class Repository:
             # text() : 문자열 SQL을 SQLAlchemy가 처리할 수 있는 객체로 바꾼다.
             # execute() : SQL을 실제 DB에 실행한다.
             result = conn.execute(text(sql), params_list)
-        
+
+            conn.execute(
+                text(update_crawl_stat_sql),
+                {
+                    'last_crawled_at': datetime.now(),
+                    'target_type': target_type
+                }
+            )
+
         # 저장한 아이템 개수를 반환한다.
         return result.rowcount if result.rowcount is not None else len(items)
     
@@ -149,12 +175,12 @@ class Repository:
             model_class,
             group_type: Literal['', 'year', 'region']=''
         ) -> str:
-        # 1. 자동차 등록 현황인 경우
+        # 자동차 등록 현황인 경우
         # if issubclass(model_class, CarRegistrationItem):
         if model_class is CarRegistrationItem:
             return self._build_car_registration_sql(group_type)
         
-        # 2. FAQ인 경우
+        # FAQ인 경우
         # elif issubclass(model_class, FaqItem):
         elif model_class is FaqItem:
             return '''
@@ -165,17 +191,31 @@ class Repository:
             FROM faq
             '''
         
-        # 3. 충전소인 경우
+        # 충전소인 경우
         # elif issubclass(model_class, StationItem):
         elif model_class is StationItem:
+            # 지도에 나타낼 수 없는 위도와 경도가 저장되지 않은 데이터는 제외한다.
             return '''
             SELECT
-                region_id,
-                station_name,
-                address,
-                lat,
-                lon
-            FROM station
+                r.region_id,
+                r.region_name,
+                h.station_name,
+                h.address,
+                h.lat,
+                h.lon
+            FROM hydrogen_charging_station h
+            JOIN regions r USING (region_id)
+            WHERE h.lat IS NOT NULL
+                AND h.lon IS NOT NULL
+            '''
+        
+        # 크롤링 상태인 경우
+        elif model_class is CrawlStat:
+            return '''
+            SELECT
+                target_type,
+                last_crawled_at
+            FROM crawl_stat
             '''
         
         # 예외 처리

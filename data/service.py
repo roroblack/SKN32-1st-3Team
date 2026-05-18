@@ -1,7 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # 테스트용
-from model.models import CarRegistrationItem, FaqItem, StationItem
+from crawling.models import CarRegistrationItem, FaqItem, StationItem
 
 # 크롤러와 DB를 연결하는 서비스 클래스이다.
 class CrawlService:
@@ -16,17 +16,17 @@ class CrawlService:
         # items = self.crawler.crawl()
 
         # 테스트용 아이템 리스트
-        # items = [CarRegistrationItem(1, 2024, 65000),
-        #          CarRegistrationItem(1, 2025, 80000),
-        #          CarRegistrationItem(1, 2026, 90000)]
+        # items = [CarRegistrationItem('서울', 2024, 65000),
+        #          CarRegistrationItem('부산', 2025, 80000),
+        #          CarRegistrationItem('', 2026, 90000)]
 
         # items = [FaqItem('Question1', 'Answer1'),
         #          FaqItem('Question2', 'Answer2'),
         #          FaqItem('Question3', 'Answer3')]
 
-        items = [StationItem(0, 'Seoul Station', 'Seoul', 72.1386, 65.9432),
-                 StationItem(1, 'Incheon Station', 'Incheon', 70.6276, 62.9582),
-                 StationItem(2, 'Busan Station', 'Busan', 68.1527, 70.1382)]
+        items = [StationItem(1, 'Seoul Station', 'Seoul', 72.1386, 65.9432),
+                 StationItem(2, 'Busan Station', 'Busan', 70.6276, 62.9582),
+                 StationItem(3, 'Daegu Station', 'Daegu', 68.1527, 70.1382)]
 
         if not items:
             return 0
