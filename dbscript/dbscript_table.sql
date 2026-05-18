@@ -35,7 +35,9 @@ create table car_registrations(
     station_name varchar(100) not null,
     address varchar(255),
     lat decimal(10, 7),
-    lon decimal(10, 7)
+    lon decimal(10, 7),
+    
+    FOREIGN KEY (region_id) REFERENCES regions(region_id)
  );
  
  create table faq(

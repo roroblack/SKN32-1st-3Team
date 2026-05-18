@@ -45,14 +45,13 @@ from streamlit_folium import st_folium
 # 데이터 조회 함수 + 지역 표시 순서 상수를 가져온다.
 from data.db import (
     fetch_registrations, fetch_stations, fetch_faqs,
-    fetch_car_last_crawled, fetch_faq_last_crawled, 
+    fetch_car_last_crawled, fetch_faq_last_crawled,
     save_car_registrations, save_faqs,
     init_table, REGION_ORDER,
 )
-from data.repository import Repository
 from crawling.crawler_molit import MolitCarCrawler
-from crawling.crawler_faq import EvFaqCrawler
-from crawling.models import FaqItem
+from crawling.crawler_faq_ev import crawl_all_faqs
+from model.models import FaqItem
 
 
 # 시도 표시 고정 순서는 db.REGION_ORDER 사용 (전국 + 17 시도)
@@ -96,8 +95,20 @@ CURRENT_YEAR = datetime.now().year
 
 @st.cache_data(ttl=300)
 def load_stat_month() -> int:
-    """크롤링 전월 데이터를 기준으로 통계 월을 반환한다."""
-    return max(1, datetime.now().month - 1)
+    """현재 연도 통계 월: 데이터 로드 시점에 molit_downloads/ 파일명에서 파싱해 캐싱한다.
+    load_registrations() 와 동일한 TTL 로 묶여 있어 데이터 갱신 시 함께 무효화된다."""
+    import re as _re
+    folder = Path(__file__).parent / "molit_downloads"
+    files = sorted(
+        [f for f in folder.glob(f"{CURRENT_YEAR}년_*.xlsx") if not f.name.startswith("~$")],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for f in files:
+        m = _re.search(r"_(\d{1,2})월", f.name)
+        if m:
+            return int(m.group(1))
+    return datetime.now().month
 
 
 # 데이터 로드와 동시에 통계 월을 메모리에 확정한다.
@@ -218,8 +229,6 @@ if _db_year_max < CURRENT_YEAR and (_last_crawled is None or _last_crawled.date(
                 _ac = MolitCarCrawler()
                 _ai = _ac.crawl()
                 if _ai:
-                    # repo = Repository()
-                    # repo.save_items(_ai)
                     save_car_registrations(_ai)
                     load_registrations.clear()
                     load_stat_month.clear()
@@ -571,8 +580,7 @@ elif _page == "💬 FAQ":
         if _faq_backup is None:
             with st.spinner("📡 FAQ 데이터를 수집하고 있습니다 (ev.or.kr · hyundai.com)..."):
                 try:
-                    _faq_crawler = EvFaqCrawler()
-                    _faq_items = _faq_crawler.crawl()
+                    _faq_items = crawl_all_faqs()
                     if _faq_items:
                         save_faqs(_faq_items)
                         load_faqs.clear()
@@ -896,8 +904,3 @@ else:  # 원형 차트
         (arc + label + _center_name + _center_count + _center_pct).properties(height=380),
         use_container_width=True,
     )
-
-
-
-if __name__ == "__main__":
-    pass

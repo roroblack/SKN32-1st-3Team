@@ -6,7 +6,7 @@ from dataclasses import asdict, fields
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from model.models import CarRegistrationItem, FaqItem, StationItem
+from crawling.models import CarRegistrationItem, FaqItem, StationItem
 
 # DB 작업을 처리하는 클래스이다.
 class Repository:
@@ -15,12 +15,12 @@ class Repository:
     MODEL_INSERT_SQL = {
         CarRegistrationItem:'''
             INSERT INTO car_registrations (
-                region_id,
+                region,
                 stat_year,
                 count
             )
             VALUES (
-                :region_id,
+                :region,
                 :stat_year,
                 :count
             )
