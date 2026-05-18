@@ -96,12 +96,13 @@ CURRENT_YEAR = datetime.now().year
 
 @st.cache_data(ttl=300)
 def load_stat_month() -> int:
-    """크롤링 전월 데이터를 기준으로 통계 월을 반환한다."""
+    """디폴트 값 생성용 : 크롤링 전월 데이터를 기준으로 통계 월을 반환한다."""
     return max(1, datetime.now().month - 1)
 
 
 # 데이터 로드와 동시에 통계 월을 메모리에 확정한다.
-STAT_MONTH: int = load_stat_month()
+# 크롤링 완료 후 session_state["stat_month"]에 실제 월이 저장되면 그 값을 우선 사용한다.
+STAT_MONTH: int = st.session_state.get("stat_month") or load_stat_month()
 
 
 @st.cache_data(ttl=3600)
@@ -137,7 +138,13 @@ def year_label(y: int) -> str:
 if "db_init_done" not in st.session_state:
     st.session_state["db_init_done"] = True
     try:
-        init_table()
+        from sqlalchemy import inspect as _sa_inspect
+        from data.db import get_engine as _get_engine
+        _existing = set(_sa_inspect(_get_engine()).get_table_names())
+        _required = {"regions", "car_registrations", "hydrogen_charging_station", "faq", "crawl_stat"}
+        # 필요한 테이블 중 하나라도 없으면 전체 테이블을 생성한다.
+        if not _required.issubset(_existing):
+            init_table()
     except Exception:
         pass
 
@@ -217,10 +224,13 @@ if _db_year_max < CURRENT_YEAR and (_last_crawled is None or _last_crawled.date(
             try:
                 _ac = MolitCarCrawler()
                 _ai = _ac.crawl()
+                month = _ac.last_stat_month
                 if _ai:
                     # repo = Repository()
                     # repo.save_items(_ai)
                     save_car_registrations(_ai)
+                    if month:
+                        st.session_state["stat_month"] = month  # 실제 수집 월을 전역 변수에 반영
                     load_registrations.clear()
                     load_stat_month.clear()
                     _load_last_crawled.clear()
@@ -352,7 +362,7 @@ st.sidebar.download_button(
     data=_build_dataset_zip(),
     file_name=f"h2_dataset_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
     mime="application/zip",
-    use_container_width=True,
+    width='stretch',
 )
 
 uploaded_zip = st.sidebar.file_uploader(
@@ -397,7 +407,7 @@ if uploaded_zip is not None:
 if (    "regs_df_override"          in st.session_state
         or "stations_df_override"   in st.session_state
         or "faqs_override"          in st.session_state):
-    if st.sidebar.button("↻  DB 데이터로 되돌리기", use_container_width=True):
+    if st.sidebar.button("↻  DB 데이터로 되돌리기", width='stretch'):
         for k in ("regs_df_override", "stations_df_override", "faqs_override"):
             st.session_state.pop(k, None)
         st.rerun()
@@ -483,7 +493,7 @@ border:1px solid #bfdbfe;min-height:130px'>
 <h4 style='color:#1d4ed8;margin-top:0'>📈 수소차 등록현황</h4>
 <p style='color:#374151;margin:0'>연도별·지역별 수소차 등록 추이를 다양한 차트로 확인하세요.</p>
 </div>""", unsafe_allow_html=True)
-        st.button("바로가기 →", key="h_reg", use_container_width=True,
+        st.button("바로가기 →", key="h_reg", width='stretch',
                   on_click=_nav_to, args=("📈 수소차 등록현황",))
     with _hc2:
         st.markdown("""<div style='padding:20px;border-radius:12px;background:#f0fdf4;
@@ -491,7 +501,7 @@ border:1px solid #bbf7d0;min-height:130px'>
 <h4 style='color:#15803d;margin-top:0'>🗺️ 수소차 충전소</h4>
 <p style='color:#374151;margin:0'>전국 수소충전소 위치와 상세 정보를 지도로 확인하세요.</p>
 </div>""", unsafe_allow_html=True)
-        st.button("바로가기 →", key="h_map", use_container_width=True,
+        st.button("바로가기 →", key="h_map", width='stretch',
                   on_click=_nav_to, args=("🗺️ 수소차 충전소",))
     with _hc3:
         st.markdown("""<div style='padding:20px;border-radius:12px;background:#fdf4ff;
@@ -499,7 +509,7 @@ border:1px solid #e9d5ff;min-height:130px'>
 <h4 style='color:#7e22ce;margin-top:0'>💬 FAQ</h4>
 <p style='color:#374151;margin:0'>수소차에 관한 자주 묻는 질문과 답변을 확인하세요.</p>
 </div>""", unsafe_allow_html=True)
-        st.button("바로가기 →", key="h_faq", use_container_width=True,
+        st.button("바로가기 →", key="h_faq", width='stretch',
                   on_click=_nav_to, args=("💬 FAQ",))
 
     st.markdown("---")
@@ -751,7 +761,7 @@ else:
             _all_layers.extend([_rate_line, _rate_pts])
         _final = alt.layer(*_all_layers).resolve_scale(y="independent")
 
-        st.altair_chart(_final.properties(height=380), use_container_width=True)
+        st.altair_chart(_final.properties(height=380), width='stretch')
 
         # 범례 (Altair color legend 대신 HTML 인라인으로 표시)
         _leg = []
@@ -828,7 +838,7 @@ if chart_type == "바 차트":
 
     st.altair_chart(
         (bars + bar_pct_labels).properties(height=420),
-        use_container_width=True,
+        width='stretch',
     )
 
 else:  # 원형 차트
@@ -894,7 +904,7 @@ else:  # 원형 차트
 
     st.altair_chart(
         (arc + label + _center_name + _center_count + _center_pct).properties(height=380),
-        use_container_width=True,
+        width='stretch',
     )
 
 
