@@ -35,7 +35,10 @@ create table car_registrations(
     station_name varchar(100) not null,
     address varchar(255),
     lat decimal(10, 7),
-    lon decimal(10, 7)
+    lon decimal(10, 7),
+    
+    foreign key (region_id) 
+    references regions (region_id)
  );
  
  create table faq(
@@ -43,6 +46,7 @@ create table car_registrations(
     question text not null,
     answer text
  );
+ 
  
  create table crawl_stat(
 	crawl_id int primary key auto_increment,
