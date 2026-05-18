@@ -1,10 +1,13 @@
-from data.service import CrawlService
+from data.service import CrawlService, SchedulerService
 
-from common.constants import ALLOWED_MODELS
+from model.models import CarRegistrationItem, FaqItem, StationItem
 
 # 모듈 테스트
 if __name__ == '__main__':
     service = CrawlService()
     # service.crawl_and_save()
 
-    print(service.repository.find_all(ALLOWED_MODELS[1]))
+    # print(service.repository.fetch_all(CarRegistrationItem, 'year'))
+    # print(service.repository.fetch_all(CarRegistrationItem, 'region'))
+    print(service.repository.fetch_all(FaqItem))
+    # print(service.repository.fetch_all(StationItem))

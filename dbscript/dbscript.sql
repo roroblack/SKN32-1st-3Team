@@ -32,12 +32,12 @@ CREATE TABLE IF NOT EXISTS regions (
 -- 지역별 연도별 수소차 누적 등록 대수를 저장한다.
 -- FK 관계: regions(1) ──< car_registrations(N)
 CREATE TABLE IF NOT EXISTS car_registrations (
-    id        BIGINT   AUTO_INCREMENT PRIMARY KEY,
-    region_id SMALLINT NOT NULL,
-    stat_year SMALLINT NOT NULL,
-    count     INT      NOT NULL DEFAULT 0,
-    FOREIGN KEY (region_id) REFERENCES regions(region_id),
-    UNIQUE KEY uq_stat (region_id, stat_year)
+    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    region_id   SMALLINT NOT NULL,
+    stat_year   SMALLINT NOT NULL,
+    count       INT NOT NULL,
+    crawled_at  DATETIME,
+    UNIQUE KEY (region_id, stat_year)
 );
 
 
@@ -46,14 +46,14 @@ CREATE TABLE IF NOT EXISTS car_registrations (
 -- 수소 충전소 (공공데이터 포털 CSV → DB 적재)
 -- lat/lon: 지도 마커 표시에 필수
 -- FK 관계: regions(1) ──< hydrogen_charging_station(N)
-CREATE TABLE IF NOT EXISTS hydrogen_charging_station (
-    id           INT            AUTO_INCREMENT PRIMARY KEY,
-    region_id    SMALLINT       NOT NULL,
-    station_name VARCHAR(100)   NOT NULL,
-    address      VARCHAR(255),
-    lat          DECIMAL(10, 7),    -- 위도
-    lon          DECIMAL(10, 7),    -- 경도
-    FOREIGN KEY (region_id) REFERENCES regions(region_id)
+CREATE TABLE IF NOT EXISTS station (
+    id              INT            AUTO_INCREMENT PRIMARY KEY,
+    region_id       SMALLINT       NOT NULL,
+    station_name    VARCHAR(100)   NOT NULL,
+    address         VARCHAR(255),
+    lat             DECIMAL(10, 7),    -- 위도
+    lon             DECIMAL(10, 7),    -- 경도
+    crawled_at      DATETIME
 );
 
 -- FAQ
