@@ -43,14 +43,14 @@ from streamlit_folium import st_folium
 # DB 쿼리 함수(주석 참고)는 db.py 로 일원화했으므로 포트 임포트는 하지 않는다.
 
 # 데이터 조회 함수 + 지역 표시 순서 상수를 가져온다.
-from common.db import (
+from data.db import (
     fetch_registrations, fetch_stations, fetch_faqs,
     fetch_car_last_crawled, fetch_faq_last_crawled,
     save_car_registrations, save_faqs,
     init_table, REGION_ORDER,
 )
 from crawling.crawler_molit import MolitCarCrawler
-from crawling.crawler_faq import crawl_all_faqs
+from crawling.crawler_faq_ev import crawl_all_faqs
 from model.models import FaqItem
 
 
