@@ -36,10 +36,13 @@ create table car_registrations(
     address varchar(255),
     lat decimal(10, 7),
     lon decimal(10, 7),
-    
-    foreign key (region_id) 
-    references regions (region_id)
  );
+ 
+ -- 외래키 추가
+ alter table hydrogen_charging_station
+ add constraint region
+ foreign key (region_id)
+ references regions (region_id);
  
  create table faq(
 	faq_id int primary key auto_increment,
