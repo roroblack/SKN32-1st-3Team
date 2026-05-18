@@ -15,7 +15,7 @@ SKN32-1st-3Team/
 ├─ crawling/
 │  ├─ crawler_molit.py      # 국토교통부 수소차 등록 현황 크롤러
 │  ├─ crawler_station.py    # 공공데이터 포털 수소충전소 크롤러
-│  ├─ crawler_faq_ev.py       # EV 무공해차 통합누리집 FAQ 크롤러
+│  ├─ crawler_faq.py          # FAQ 크롤러 (ev.or.kr · hyundai.com)
 │  ├─ load_station_csv.py   # 충전소 CSV → DB 수동 적재
 │  ├─ db.py                 # MySQL 연결·스키마·조회 함수
 │  ├─ models.py             # 데이터 클래스
@@ -92,17 +92,17 @@ DB_NAME=crawler_db
 
 ### DB 스키마 생성
 
-`dbscript/dbscript.sql`을 MySQL에서 한 번 실행합니다.
+`dbscript/dbscript_table.sql`을 MySQL에서 한 번 실행합니다.
 
 ```bash
-mysql -u your_user -p < dbscript/dbscript.sql
+mysql -u your_user -p < dbscript/dbscript_table.sql
 ```
-또는 MySQL Workbench에서서 실행합니다.
+또는 MySQL Workbench에서 실행합니다.
 ```
 1. 상단에서 Database → Connect to Database
    서버 선택 후 접속
 2. 상단 메뉴에서 File → Open SQL Script
-3. dbscript/dbscript.sql 파일 선택
+3. dbscript/dbscript_table.sql 파일 선택
 4. SQL 에디터에 스크립트가 열리면
 5. 상단 번개 아이콘(⚡) 또는 Ctrl + Shift + Enter (전체 스크립트 실행)
 ```
@@ -121,8 +121,8 @@ python -m crawling.crawler_station
 # 수소차 등록 현황 크롤링 및 DB 저장
 python -m crawling.crawler_molit
 
-# EV 무공해차 통합누리집 FAQ 크롤링 및 DB 저장
-python crawling/crawler_faq_ev.py
+# FAQ 크롤링 및 DB 저장 (ev.or.kr · hyundai.com)
+python crawling/crawler_faq.py
 
 # CSV 수동 적재 (load_station_csv.py의 CSV_PATH 지정 후)
 python -m crawling.load_station_csv
