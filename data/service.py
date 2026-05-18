@@ -1,52 +1,58 @@
+import logging
+
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# 테스트용
-from crawling.models import CarRegistrationItem, FaqItem, StationItem
+logger = logging.getLogger(__name__)
+
 
 # 크롤러와 DB를 연결하는 서비스 클래스이다.
 class CrawlService:
-    def __init__(self, crawler, repository):
+    def __init__(self, crawler, repository=None):
+        # 실행할 크롤러 객체를 받는다.
         self.crawler = crawler
+        # 아이템 목록을 반환하는 크롤러(MolitCarCrawler, EvFaqCrawler 등)는
+        # repository를 통해 DB에 저장한다.
+        # 직접 DB에 저장하는 크롤러(StationCrawler 등)는 None으로 둬도 된다.
         self.repository = repository
 
-    # 크롤러를 실행하고 가져온 아이템들을 DB에 저장하는 메소드이다.
+    # 크롤러를 실행하고 결과를 DB에 저장하는 메소드이다.
     def crawl_and_save(self):
-        # 크롤러를 실행하여 아이템 리스트를 가져온다.
-        # 크롤러 클래스 작성 후 변경
-        # items = self.crawler.crawl()
-
-        # 테스트용 아이템 리스트
-        # items = [CarRegistrationItem(1, 2024, 65000),
-        #          CarRegistrationItem(1, 2025, 80000),
-        #          CarRegistrationItem(1, 2026, 90000)]
-
-        # items = [FaqItem('Question1', 'Answer1'),
-        #          FaqItem('Question2', 'Answer2'),
-        #          FaqItem('Question3', 'Answer3')]
-
-        items = [StationItem(0, 'Seoul Station', 'Seoul', 72.1386, 65.9432),
-                 StationItem(1, 'Incheon Station', 'Incheon', 70.6276, 62.9582),
-                 StationItem(2, 'Busan Station', 'Busan', 68.1527, 70.1382)]
-
-        if not items:
+        try:
+            result = self.crawler.crawl()
+        except Exception as e:
+            logger.error(f"[CrawlService] 크롤링 중 오류 발생: {e}")
             return 0
 
-        # 아이템 리스트를 DB에 저장한다.
-        # 저장한 아이템 개수를 반환한다.
-        return self.repository.save_items(items)
+        # crawl()이 int를 반환하면 크롤러가 DB 저장까지 직접 처리한 것이다.
+        # (StationCrawler 등)
+        if isinstance(result, int):
+            logger.info(f"[CrawlService] {result}건 저장 완료")
+            return result
+
+        # crawl()이 아이템 목록을 반환하면 repository를 통해 DB에 저장한다.
+        if not result:
+            return 0
+
+        if self.repository is None:
+            logger.warning("[CrawlService] repository가 없어 저장을 건너뜁니다.")
+            return 0
+
+        count = self.repository.save_items(result)
+        logger.info(f"[CrawlService] {count}건 저장 완료")
+        return count
 
 
-# UI 연결 작업 후 테스트 필요
 # 스케줄러를 관리하는 클래스이다.
 class SchedulerService:
     JOB_ID = 'auto_crawling_job'
 
-    def __init__(self):
+    def __init__(self, crawl_service: CrawlService):
         # 백그라운드 스케줄러 객체를 만든다.
         self.scheduler = BackgroundScheduler()
 
-        # 스케줄러가 실행할 크롤링 서비스 객체를 만든다.
-        self.service = CrawlService()
+        # 스케줄러가 실행할 크롤링 서비스 객체를 주입받는다.
+        # app.py에서 CrawlService(StationCrawler()) 등을 만들어 전달한다.
+        self.service = crawl_service
     
     # 스케줄러를 시작하는 메소드이다.
     def start(self):
@@ -109,3 +115,31 @@ class SchedulerService:
     # 현재 등록된 모든 스케줄 작업을 반환하는 메소드이다.
     def get_jobs(self):
         return self.scheduler.get_jobs()
+
+    # 등록된 job을 일시정지한다.
+    def pause(self):
+        job = self.scheduler.get_job(self.JOB_ID)
+        if job:
+            self.scheduler.pause_job(self.JOB_ID)
+
+    # 일시정지된 job을 재개한다.
+    def resume(self):
+        job = self.scheduler.get_job(self.JOB_ID)
+        if job:
+            self.scheduler.resume_job(self.JOB_ID)
+
+    # job이 등록되어 있고 일시정지 상태가 아니면 True를 반환한다.
+    # APScheduler에서 일시정지된 job은 next_run_time 이 None 이 된다.
+    def is_job_running(self) -> bool:
+        job = self.scheduler.get_job(self.JOB_ID)
+        return job is not None and job.next_run_time is not None
+
+    # 현재 등록된 job의 실행 주기를 분 단위로 반환한다. job이 없으면 None.
+    def get_interval_minutes(self) -> int | None:
+        job = self.scheduler.get_job(self.JOB_ID)
+        if job is None:
+            return None
+        try:
+            return int(job.trigger.interval.total_seconds() / 60)
+        except AttributeError:
+            return None

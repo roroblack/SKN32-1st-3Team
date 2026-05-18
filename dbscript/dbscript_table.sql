@@ -5,19 +5,19 @@
 -- 	4. faq : faq
 -- 	5. crawl_stat : 충전소 크롤링 데이터
 
-create database crawler_db
+create database if not exists crawler_db
 	default character set utf8mb4
     collate utf8mb4_unicode_ci;
     
 use crawler_db;
 
 -- 테이블 작성 // regions : 지역
-create table regions (
+create table if not exists regions (
 	region_id	smallint	primary key auto_increment,
     region_name varchar(20) not null unique    
 );
 
-create table car_registrations(
+create table if not exists car_registrations(
 	id bigint primary key auto_increment,
     region_id smallint not null,
     stat_year smallint not null,
@@ -29,7 +29,7 @@ create table car_registrations(
     unique key uq_stat (region_id, stat_year)   
 );
  
- create table hydrogen_charging_station(
+ create table if not exists hydrogen_charging_station(
 	id int primary key auto_increment,
     region_id smallint not null,
     station_name varchar(100) not null,
@@ -40,13 +40,13 @@ create table car_registrations(
     FOREIGN KEY (region_id) REFERENCES regions(region_id)
  );
  
- create table faq(
+ create table if not exists faq(
 	faq_id int primary key auto_increment,
     question text not null,
     answer text
  );
  
- create table crawl_stat(
+ create table if not exists crawl_stat(
 	crawl_id int primary key auto_increment,
     target_type varchar(30) not null,
     last_crawled_at datetime,
@@ -55,17 +55,18 @@ create table car_registrations(
 
  
  -- 확인용
- select * from regions;
- select * from car_registrations;
- select * from hydrogen_charging_station;
- select * from faq;
- select * from crawl_stat;
+--  select * from regions;
+--  select * from car_registrations;
+--  select * from hydrogen_charging_station;
+--  select * from faq;
+--  select * from crawl_stat;
  
- SELECT COUNT(*) FROM hydrogen_charging_station;
-SELECT * FROM hydrogen_charging_station LIMIT 5;
+--  SELECT COUNT(*) FROM hydrogen_charging_station;
+-- SELECT * FROM hydrogen_charging_station LIMIT 5;
+
  -- 초기화 쿼리문
- truncate table regions;
- truncate table car_registrations;
- truncate table hydrogen_charging_station;
- truncate table faq;
- truncate table crawl_stat;
+--  truncate table regions;
+--  truncate table car_registrations;
+--  truncate table hydrogen_charging_station;
+--  truncate table faq;
+--  truncate table crawl_stat;

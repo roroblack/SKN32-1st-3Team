@@ -52,7 +52,9 @@ from data.db import (
 from data.repository import Repository
 from crawling.crawler_molit import MolitCarCrawler
 from crawling.crawler_faq import EvFaqCrawler
+from crawling.crawler_station import StationCrawler
 from crawling.models import FaqItem
+from data.service import CrawlService, SchedulerService
 
 
 # 시도 표시 고정 순서는 db.REGION_ORDER 사용 (전국 + 17 시도)
@@ -69,7 +71,42 @@ st.set_page_config(
 
 
 # ──────────────────────────────────────────────────────────────
-# 데이터 로드
+# 스케줄러 (수소충전소 데이터 5분마다 자동 갱신)
+# ──────────────────────────────────────────────────────────────
+# @st.cache_resource 를 사용하면 Streamlit 서버가 살아있는 동안 딱 한 번만 실행된다.
+# 사용자가 버튼을 누르거나 페이지를 이동해도 스크립트가 재실행되는데,
+# 그때마다 새 스케줄러가 만들어지면 중복 실행 문제가 생긴다.
+# cache_resource 가 이 문제를 방지하고 같은 인스턴스를 계속 반환한다.
+@st.cache_resource
+def _get_station_scheduler() -> SchedulerService:
+    _svc = CrawlService(StationCrawler())          # StationCrawler는 자체적으로 DB 저장까지 처리
+    _sch = SchedulerService(_svc)
+    _sch.add_interval_job(minutes=5)               # 5분마다 수소충전소 데이터 갱신
+    _sch.start()
+    return _sch
+
+
+# 앱 실행(또는 리런) 시 스케줄러를 시작한다. 이미 실행 중이면 캐시에서 반환한다.
+_station_scheduler = _get_station_scheduler()
+
+
+# FAQ 스케줄러 — 기본 정지 상태로 생성, 사이드바에서 사용자가 직접 시작/주기 설정
+# EvFaqCrawler 는 sync_playwright 기반이므로 실행 주기를 충분히 길게 설정하는 것을 권장한다.
+@st.cache_resource
+def _get_faq_scheduler() -> SchedulerService:
+    _svc = CrawlService(EvFaqCrawler(), Repository())
+    _sch = SchedulerService(_svc)
+    _sch.add_interval_job(minutes=1440)    # 기본 24시간 주기
+    _sch.start()
+    _sch.pause()                           # 처음엔 정지 상태; 사용자가 사이드바에서 켠다
+    return _sch
+
+
+_faq_scheduler = _get_faq_scheduler()
+
+
+# ──────────────────────────────────────────────────────────────
+# Repository 싱글턴
 # ──────────────────────────────────────────────────────────────
 # @st.cache_data(ttl=300): 5분 동안 응답을 캐시해서 매 리런마다 DB를 오가는 것을 막는다.
 # SQL 코드는 db.py의 fetch_* 함수에만 있고 여기서는 데이터를 호출만 한다.
@@ -279,8 +316,8 @@ _page  = st.sidebar.radio("메뉴", _PAGES, key="nav_page", label_visibility="co
 # ── 슬라이더 파란색 CSS (전역 주입) ───────────────────────────
 st.markdown("""
 <style>
-div[data-testid="stSlider"] [role="slider"]      { background: #2563eb !important; }
-div[data-testid="stSlider"] [class*="TrackFill"] { background: #2563eb !important; }
+div[data-testid="stSlider"] [role="slider"]      { background: #60a5fa !important; }
+div[data-testid="stSlider"] [class*="TrackFill"] { background: #60a5fa !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -303,14 +340,18 @@ if _page in ("📈 수소차 등록현황", "🗺️ 수소차 충전소"):
 
     if _page == "📈 수소차 등록현황":
         # 1) 등록 기간 선택 (기본: 전체 기간, 26년 N월 포함)
+        # 홈 화면으로 이동하면 위젯 key가 session_state에서 자동 삭제되므로,
+        # 별도 shadow key(year_range_saved)에 값을 보존해 페이지 복귀 시 복원한다.
+        _default_year_range = st.session_state.get("year_range_saved", (year_min, slider_year_max))
         year_range = st.sidebar.slider(
             "등록 기간 선택",
             min_value=year_min,
             max_value=slider_year_max,
-            value=(year_min, slider_year_max),
+            value=_default_year_range,
             step=1,
             key="year_range",
         )
+        st.session_state["year_range_saved"] = year_range
         st.sidebar.caption(
             f"기간: **{year_label(year_range[0])} ~ {year_label(year_range[1])}**"
         )
@@ -318,12 +359,16 @@ if _page in ("📈 수소차 등록현황", "🗺️ 수소차 충전소"):
         year_range = (year_min, slider_year_max)
 
     # 2) 지역 선택 (전국 + 17개 시도, 고정 순서)
+    # shadow key로 이전 선택 지역 복원 (홈 이동 시 위젯 key 삭제 방지)
+    _saved_region = st.session_state.get("selected_region_saved", default_region)
+    _saved_region_idx = region_options.index(_saved_region) if _saved_region in region_options else region_options.index(default_region)
     selected_region = st.sidebar.selectbox(
         "지역 선택",
         region_options,
-        index=region_options.index(default_region),
+        index=_saved_region_idx,
         key="selected_region",
     )
+    st.session_state["selected_region_saved"] = selected_region
 else:
     year_range      = (year_min, slider_year_max)
     selected_region = default_region
@@ -412,6 +457,80 @@ if (    "regs_df_override"          in st.session_state
             st.session_state.pop(k, None)
         st.rerun()
     st.sidebar.info("📂 현재 업로드된 데이터를 표시 중입니다.")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("⏱ 자동 크롤링 스케줄러")
+
+# ── 수소충전소 스케줄러 ─────────────────────────────────────────
+st.sidebar.markdown("**🔵 수소충전소**")
+_stn_running      = _station_scheduler.is_job_running()
+_stn_interval_cur = _station_scheduler.get_interval_minutes() or 5
+if _stn_running:
+    try:
+        _stn_next = _station_scheduler.scheduler.get_job(
+            _station_scheduler.JOB_ID).next_run_time.strftime("%H:%M:%S")
+    except (AttributeError, TypeError):
+        _stn_next = "-"
+    st.sidebar.success(f"🟢 실행 중 · {_stn_interval_cur}분 간격 · 다음: {_stn_next}")
+else:
+    st.sidebar.error("🔴 일시정지")
+
+_sc1, _sc2 = st.sidebar.columns([1, 1])
+if _stn_running:
+    if _sc1.button("⏸ 일시정지", key="btn_stn_pause", width='stretch'):
+        _station_scheduler.pause()
+        st.rerun()
+else:
+    if _sc1.button("▶ 재시작", key="btn_stn_resume", width='stretch'):
+        _station_scheduler.resume()
+        st.rerun()
+_new_stn_min = _sc2.number_input(
+    "주기(분)", min_value=1, max_value=1440,
+    value=_stn_interval_cur, step=1,
+    key="stn_interval_input", label_visibility="collapsed",
+)
+if st.sidebar.button("↺  수소충전소 주기 적용", key="btn_stn_apply", width='stretch'):
+    _was_paused = not _station_scheduler.is_job_running()
+    _station_scheduler.add_interval_job(minutes=int(_new_stn_min))
+    if _was_paused:
+        _station_scheduler.pause()
+    st.rerun()
+
+# ── FAQ 스케줄러 ─────────────────────────────────────────────
+st.sidebar.markdown("**🟣 FAQ**")
+st.sidebar.caption("⚠️ Playwright 기반 크롤러 · 건당 2~3분 소요 · 긴 주기 권장")
+_faq_running      = _faq_scheduler.is_job_running()
+_faq_interval_cur = _faq_scheduler.get_interval_minutes() or 1440
+if _faq_running:
+    try:
+        _faq_next = _faq_scheduler.scheduler.get_job(
+            _faq_scheduler.JOB_ID).next_run_time.strftime("%H:%M:%S")
+    except (AttributeError, TypeError):
+        _faq_next = "-"
+    st.sidebar.success(f"🟢 실행 중 · {_faq_interval_cur}분 간격 · 다음: {_faq_next}")
+else:
+    st.sidebar.error("🔴 정지됨")
+
+_fc1, _fc2 = st.sidebar.columns([1, 1])
+if _faq_running:
+    if _fc1.button("⏸ 일시정지", key="btn_faq_pause", width='stretch'):
+        _faq_scheduler.pause()
+        st.rerun()
+else:
+    if _fc1.button("▶ 시작", key="btn_faq_start", width='stretch'):
+        _faq_scheduler.resume()
+        st.rerun()
+_new_faq_min = _fc2.number_input(
+    "주기(분)", min_value=60, max_value=10080,
+    value=_faq_interval_cur, step=60,
+    key="faq_interval_input", label_visibility="collapsed",
+)
+if st.sidebar.button("↺  FAQ 주기 적용", key="btn_faq_apply", width='stretch'):
+    _was_faq_paused = not _faq_scheduler.is_job_running()
+    _faq_scheduler.add_interval_job(minutes=int(_new_faq_min))
+    if _was_faq_paused:
+        _faq_scheduler.pause()
+    st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.caption(
@@ -525,16 +644,24 @@ elif _page == "🗺️ 수소차 충전소":
     _map_st = (
         stations_df if selected_region == "전국"
         else stations_df[stations_df["region_name"] == selected_region]
-    )
+    ).reset_index(drop=True)
     st.caption(f"표시된 충전소: **{len(_map_st):,}** 곳")
     if _map_st.empty:
         st.info("해당 지역의 충전소 데이터가 없습니다.")
     else:
+        _stn_sel_key = f"_stn_sel_{selected_region}"
+        _sel_idx = st.session_state.get(_stn_sel_key, None)
+        _sel_row = _map_st.iloc[_sel_idx] if _sel_idx is not None else None
         _m = folium.Map(
-            location=[_map_st["lat"].mean(), _map_st["lon"].mean()],
-            zoom_start=7 if selected_region == "전국" else 10,
+            location=(
+                [_sel_row["lat"], _sel_row["lon"]]
+                if _sel_row is not None
+                else [_map_st["lat"].mean(), _map_st["lon"].mean()]
+            ),
+            zoom_start=14 if _sel_row is not None else (7 if selected_region == "전국" else 10),
         )
-        for _, _r in _map_st.iterrows():
+        for _ri, _r in _map_st.iterrows():
+            _is_sel = (_sel_idx is not None and _ri == _sel_idx)
             folium.Marker(
                 location=[_r["lat"], _r["lon"]],
                 popup=folium.Popup(
@@ -542,9 +669,35 @@ elif _page == "🗺️ 수소차 충전소":
                     max_width=260,
                 ),
                 tooltip=_r["station_name"],
-                icon=folium.Icon(color="blue", icon="tint", prefix="fa"),
+                icon=folium.Icon(
+                    color="red" if _is_sel else "blue",
+                    icon="star" if _is_sel else "tint",
+                    prefix="fa",
+                ),
             ).add_to(_m)
-        st_folium(_m, height=540, use_container_width=True, returned_objects=[])
+        st_folium(_m, height=540, width='stretch', returned_objects=[])
+
+        # 충전소 목록 테이블 (클릭하면 지도에서 해당 충전소 강조)
+        st.subheader("충전소 목록")
+        _disp_cols = ["station_name", "address", "region_name"]
+        _disp_df = _map_st[_disp_cols].copy()
+        _disp_df.columns = ["충전소명", "주소", "지역"]
+        _disp_df.index += 1
+        _tbl_evt = st.dataframe(
+            _disp_df,
+            width='stretch',
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"_stn_tbl_{selected_region}",
+        )
+        _new_rows = list(getattr(_tbl_evt.selection, "rows", None) or [])
+        _new_idx  = (_new_rows[0] - 1) if _new_rows else None  # 1-based → 0-based
+        if _new_idx != _sel_idx:
+            if _new_idx is not None:
+                st.session_state[_stn_sel_key] = _new_idx
+            else:
+                st.session_state.pop(_stn_sel_key, None)
+            st.rerun()
     st.stop()
 
 elif _page == "💬 FAQ":
@@ -701,6 +854,7 @@ else:
 
     # 좌측 y축 스케일 기준 (누적 등록 최댓값) — 데이터 없을 때도 스케일 고정에 사용
     _left_max = int(_yearly_ext["count"].dropna().max()) if not _yearly_ext["count"].dropna().empty else 1
+    _hover_year = alt.selection_point(on='mouseover', nearest=True, fields=['year_str'])
 
     if _left_rows:
         _ldf = pd.DataFrame(_left_rows)
@@ -715,9 +869,11 @@ else:
                      alt.Tooltip("val:Q", title="등록 대수", format=","),
                      alt.Tooltip("항목:N", title="항목")],
         )
-        _left_pts = alt.Chart(_ldf).mark_point(size=_PT, filled=True).encode(
+        _left_pts = alt.Chart(_ldf).mark_point(filled=True).encode(
             x=_x_enc, y=alt.Y("val:Q", axis=None), color=_color_enc,
-        )
+            size=alt.condition(_hover_year, alt.value(180), alt.value(_PT)),
+            opacity=alt.condition(_hover_year, alt.value(1.0), alt.value(0.5)),
+        ).add_params(_hover_year)
     else:
         # 등록 대수 항목 미선택 시에도 좌측 y축 고정 표시 (투명 더미 레이어)
         _dummy_ldf = pd.DataFrame([{"year_str": s, "val": 0.0} for s in x_sort])
@@ -741,11 +897,15 @@ else:
                      alt.Tooltip("증가율:Q", title="증가율 (%)", format=".1f")],
         )
         _rate_pts = alt.Chart(_rdf).mark_point(
-            color=_C_RATE, size=_PT, filled=True
+            color=_C_RATE, filled=True
         ).encode(
             x=_x_enc,
             y=alt.Y("증가율:Q", axis=None),
+            size=alt.condition(_hover_year, alt.value(180), alt.value(_PT)),
+            opacity=alt.condition(_hover_year, alt.value(1.0), alt.value(0.5)),
         )
+        if not _left_rows:
+            _rate_pts = _rate_pts.add_params(_hover_year)
         _right_chart = _rate_line + _rate_pts
     else:
         _right_chart = None
@@ -761,14 +921,44 @@ else:
             _all_layers.extend([_rate_line, _rate_pts])
         _final = alt.layer(*_all_layers).resolve_scale(y="independent")
 
-        st.altair_chart(_final.properties(height=380), width='stretch')
+        # 연도별 수치 표 빌드
+        _yr_tbl_df = (
+            line_data[["stat_year", "year_str", "count", "신규등록", "증가율"]]
+            .dropna(subset=["count"])
+            .sort_values("stat_year", ascending=False)
+            .reset_index(drop=True)
+        )
+        # 첫 연도(최솟값)는 이전 데이터 없음 → 신규=누적, 증가율=100% 처리
+        _first_yr_mask = _yr_tbl_df["stat_year"] == _yr_tbl_df["stat_year"].min()
+        _yr_tbl_df.loc[_first_yr_mask, "신규등록"] = _yr_tbl_df.loc[_first_yr_mask, "count"].values
+        _yr_tbl_df.loc[_first_yr_mask, "증가율"]   = 100.0
+        _yr_tbl_df = _yr_tbl_df.drop(columns="stat_year")
+        _yr_tbl_df.index += 1
+        _yr_tbl_df.columns = ["연도", "누적 등록 대수", "신규 등록 대수", "증가율 (%)"]
 
-        # 범례 (Altair color legend 대신 HTML 인라인으로 표시)
-        _leg = []
-        if _show_cum:  _leg.append(f"<span style='color:{_C_CUM}'>━</span> 누적 등록 대수")
-        if _show_new:  _leg.append(f"<span style='color:{_C_NEW}'>╌</span> 신규 등록 대수")
-        if _show_rate: _leg.append(f"<span style='color:{_C_RATE}'>╌</span> 전년 대비 증가율 (%, 우측 축)")
-        st.caption("  ·  ".join(_leg), unsafe_allow_html=True)
+        # 마우스 오버 시 세로 강조선
+        _yr_rule = (
+            alt.Chart(pd.DataFrame({"year_str": x_sort}))
+            .mark_rule(color="#9ca3af", strokeWidth=1.5, strokeDash=[4, 3])
+            .transform_filter(_hover_year)
+            .encode(x=alt.X("year_str:N", sort=x_sort))
+        )
+        _final_with_rule = alt.layer(_final, _yr_rule).resolve_scale(y="independent")
+
+        _lcol, _rtbl = st.columns([3, 2])
+        with _lcol:
+            st.altair_chart(_final_with_rule.properties(height=380), width='stretch')
+            # 범례 (Altair color legend 대신 HTML 인라인으로 표시)
+            _leg = []
+            if _show_cum:  _leg.append(f"<span style='color:{_C_CUM}'>━</span> 누적 등록 대수")
+            if _show_new:  _leg.append(f"<span style='color:{_C_NEW}'>╌</span> 신규 등록 대수")
+            if _show_rate: _leg.append(f"<span style='color:{_C_RATE}'>╌</span> 전년 대비 증가율 (%, 우측 축)")
+            st.caption("  ·  ".join(_leg), unsafe_allow_html=True)
+        with _rtbl:
+            st.markdown("**연도별 수치**")
+            # 헤더(38px) + 행당 35px + 여백(3px) → 정확히 맞는 높이로 표시
+            _yr_tbl_h = 38 + len(_yr_tbl_df) * 35 + 3
+            st.dataframe(_yr_tbl_df, width='stretch', height=_yr_tbl_h)
 
 st.divider()
 
@@ -858,15 +1048,23 @@ else:  # 원형 차트
         )
     )
 
-    arc = base.mark_arc(outerRadius=130, innerRadius=50).encode(
+    _hover_pie = alt.selection_point(on='mouseover', fields=['region_name'], empty=False)
+    # 기본 레이어: 모든 조각, opacity는 선택 상태 기반
+    _arc_base = base.mark_arc(outerRadius=130, innerRadius=50).encode(
         color=alt.condition(_SEL_PRED, alt.value(_COLOR_SEL), alt.value(_COLOR_OTHER)),
-        opacity=alt.condition(_SEL_PRED, alt.value(1.0), alt.value(0.7)),
+        opacity=alt.when(_hover_pie).then(alt.value(1.0)).when(_SEL_PRED).then(alt.value(1.0)).otherwise(alt.value(0.4)),
         tooltip=[
             alt.Tooltip("region_name:N", title="지역"),
             alt.Tooltip("count:Q",       title="등록 대수", format=","),
             alt.Tooltip("percent:Q",     title="비중 (%)",  format=".1f"),
         ],
+    ).add_params(_hover_pie)
+    # 팝아웃 레이어: 호버된 조각만 큰 radius로 표시 (전국 모드 포함 모든 상태에서 동작)
+    _arc_pop = base.mark_arc(outerRadius=143, innerRadius=50).encode(
+        color=alt.condition(_SEL_PRED, alt.value(_COLOR_SEL), alt.value(_COLOR_OTHER)),
+        opacity=alt.when(_hover_pie).then(alt.value(1.0)).otherwise(alt.value(0.0)),
     )
+    arc = _arc_base + _arc_pop
 
     label = base.mark_text(radius=155, size=10, color="#374151").encode(
         text=alt.Text("label_text:N"),
@@ -902,10 +1100,21 @@ else:  # 원형 차트
         .encode(theta=alt.Theta("v:Q"), text="txt:N")
     )
 
-    st.altair_chart(
-        (arc + label + _center_name + _center_count + _center_pct).properties(height=380),
-        width='stretch',
-    )
+    _region_tbl = chart_df[["region_name", "count", "percent"]].copy()
+    _region_tbl.columns = ["지역", "등록 대수", "비중 (%)"]
+    _region_tbl = _region_tbl.sort_values("등록 대수", ascending=False).reset_index(drop=True)
+    _region_tbl.index += 1
+
+    _pie_col, _tbl_col = st.columns([3, 2])
+    with _pie_col:
+        st.altair_chart(
+            (arc + label + _center_name + _center_count + _center_pct).properties(height=380),
+            width='stretch',
+        )
+    with _tbl_col:
+        st.markdown("**지역별 수치**")
+        _region_tbl_h = 38 + len(_region_tbl) * 35 + 3
+        st.dataframe(_region_tbl, width='stretch', height=_region_tbl_h)
 
 
 
