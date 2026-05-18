@@ -15,7 +15,7 @@ SKN32-1st-3Team/
 ├─ crawling/
 │  ├─ crawler_molit.py      # 국토교통부 수소차 등록 현황 크롤러
 │  ├─ crawler_station.py    # 공공데이터 포털 수소충전소 크롤러
-│  ├─ crawler_faq_ev.py       # EV 무공해차 통합누리집 FAQ 크롤러
+│  ├─ crawler_faq.py          # FAQ 크롤러 (ev.or.kr · hyundai.com)
 │  ├─ load_station_csv.py   # 충전소 CSV → DB 수동 적재
 │  ├─ db.py                 # MySQL 연결·스키마·조회 함수
 │  ├─ models.py             # 데이터 클래스
@@ -121,8 +121,8 @@ python -m crawling.crawler_station
 # 수소차 등록 현황 크롤링 및 DB 저장
 python -m crawling.crawler_molit
 
-# EV 무공해차 통합누리집 FAQ 크롤링 및 DB 저장
-python crawling/crawler_faq_ev.py
+# FAQ 크롤링 및 DB 저장 (ev.or.kr · hyundai.com)
+python crawling/crawler_faq.py
 
 # CSV 수동 적재 (load_station_csv.py의 CSV_PATH 지정 후)
 python -m crawling.load_station_csv
