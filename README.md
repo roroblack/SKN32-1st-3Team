@@ -24,7 +24,7 @@ SKN32-1st-3Team/
 ├─ data/
 │  └─ __init__.py
 ├─ dbscript/
-│  └─ dbscript.sql          # DB 스키마 SQL
+│  └─ dbscript_table.sql          # DB 스키마 SQL
 ├─ model/
 │  └─ __init__.py
 ├─ requirements.txt
