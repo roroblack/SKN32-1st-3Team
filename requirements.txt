@@ -1,0 +1,15 @@
+streamlit
+folium
+streamlit-folium
+altair
+pandas
+plotly
+pymysql
+sqlalchemy
+python-dotenv # dotenv
+beautifulsoup4
+lxml
+playwright
+apscheduler
+requests
+openpyxl
