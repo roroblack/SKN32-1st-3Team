@@ -21,9 +21,9 @@ from playwright.async_api import async_playwright
 from concurrent.futures import ThreadPoolExecutor
 
 # models.py에 정의된 CarRegistrationItem 데이터 클래스를 가져온다.
-from model.models import CarRegistrationItem
+from crawling.models import CarRegistrationItem
 
-from common.db import REGIONS
+from crawling.db import REGIONS
 
 
 # .env 파일을 읽어서 os.getenv()로 사용할 수 있게 한다.

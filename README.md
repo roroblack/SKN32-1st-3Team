@@ -92,17 +92,17 @@ DB_NAME=crawler_db
 
 ### DB 스키마 생성
 
-`dbscript/dbscript.sql`을 MySQL에서 한 번 실행합니다.
+`dbscript/dbscript_table.sql`을 MySQL에서 한 번 실행합니다.
 
 ```bash
-mysql -u your_user -p < dbscript/dbscript.sql
+mysql -u your_user -p < dbscript/dbscript_table.sql
 ```
-또는 MySQL Workbench에서서 실행합니다.
+또는 MySQL Workbench에서 실행합니다.
 ```
 1. 상단에서 Database → Connect to Database
    서버 선택 후 접속
 2. 상단 메뉴에서 File → Open SQL Script
-3. dbscript/dbscript.sql 파일 선택
+3. dbscript/dbscript_table.sql 파일 선택
 4. SQL 에디터에 스크립트가 열리면
 5. 상단 번개 아이콘(⚡) 또는 Ctrl + Shift + Enter (전체 스크립트 실행)
 ```

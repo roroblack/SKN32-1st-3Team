@@ -50,8 +50,8 @@ from data.db import (
     init_table, REGION_ORDER,
 )
 from crawling.crawler_molit import MolitCarCrawler
-from crawling.crawler_faq_ev import crawl_all_faqs
-from model.models import FaqItem
+from crawling.crawler_faq import crawl_all_faqs
+from crawling.models import FaqItem
 
 
 # 시도 표시 고정 순서는 db.REGION_ORDER 사용 (전국 + 17 시도)

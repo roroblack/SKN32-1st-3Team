@@ -1,7 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # 테스트용
-from model.models import CarRegistrationItem, FaqItem, StationItem
+from crawling.models import CarRegistrationItem, FaqItem, StationItem
 
 # 크롤러와 DB를 연결하는 서비스 클래스이다.
 class CrawlService:

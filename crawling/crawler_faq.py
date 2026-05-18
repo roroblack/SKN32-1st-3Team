@@ -218,7 +218,6 @@ class EvFaqCrawler:
                         category="",
                         question=question,
                         answer=answer,
-                        crawled_at=now,
                     )
                 )
 
@@ -335,7 +334,6 @@ class HyundaiFaqCrawler:
                         category="",
                         question=question,
                         answer=answer,
-                        crawled_at=now,
                     )
                 )
 
