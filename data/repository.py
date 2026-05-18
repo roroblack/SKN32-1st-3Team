@@ -17,26 +17,22 @@ class Repository:
             INSERT INTO car_registrations (
                 region_id,
                 stat_year,
-                count,
-                crawled_at
+                count
             )
             VALUES (
                 :region_id,
                 :stat_year,
-                :count,
-                :crawled_at
+                :count
             )
         ''',
         FaqItem:'''
             INSERT INTO faq (
                 question,
-                answer,
-                crawled_at
+                answer
             )
             VALUES (
                 :question,
-                :answer,
-                :crawled_at
+                :answer
             )
         ''',
         StationItem:'''
@@ -45,16 +41,14 @@ class Repository:
                 station_name,
                 address,
                 lat,
-                lon,
-                crawled_at
+                lon
             )
             VALUES (
                 :region_id,
                 :station_name,
                 :address,
                 :lat,
-                :lon,
-                :crawled_at
+                :lon
             )
         '''
     }
@@ -140,7 +134,7 @@ class Repository:
     def fetch_all(
             self,
             model_class,
-            group_type: Literal['', 'year', 'region']
+            group_type: Literal['', 'year', 'region']=''
         ) -> pd.DataFrame:
         # 전체 데이터를 조회하는 SQL을 만든다.
         sql = self._build_fetch_all_sql(model_class, group_type)
@@ -167,8 +161,7 @@ class Repository:
             SELECT
                 faq_id,
                 question,
-                answer,
-                crawled_at
+                answer
             FROM faq
             '''
         
@@ -181,8 +174,7 @@ class Repository:
                 station_name,
                 address,
                 lat,
-                lon,
-                crawled_at
+                lon
             FROM station
             '''
         
@@ -226,8 +218,7 @@ class Repository:
             r.region_id,
             r.region_name,
             c.stat_year,
-            c.count,
-            c.crawled_at
+            c.count
         FROM car_registrations c
         JOIN regions r USING (region_id)
         ORDER BY c.stat_year, r.region_id
