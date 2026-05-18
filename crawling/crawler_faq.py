@@ -30,12 +30,12 @@ from sqlalchemy import text
 _ROOT = Path(__file__).resolve().parent.parent
 
 # 프로젝트 루트가 import 경로에 없으면 추가한다.
-# crawling.db, crawling.models 를 어디서 실행해도 불러올 수 있게 한다.
+# data.db, crawling.models 를 어디서 실행해도 불러올 수 있게 한다.
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 # DB 연결 엔진 생성 함수를 가져온다.
-from crawling.db import get_engine
+from data.db import get_engine
 
 # models.py에 정의된 FaqItem 데이터 클래스를 가져온다.
 from crawling.models import FaqItem

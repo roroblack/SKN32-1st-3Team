@@ -27,7 +27,7 @@ from playwright.async_api import async_playwright
 from sqlalchemy import text
 
 # DB 연결 엔진 생성 함수를 가져온다.
-from crawling.db import get_engine, REGIONS
+from data.db import get_engine, REGIONS
 from crawling.models import StationItem
 
 # .env 파일을 읽어서 os.getenv()로 사용할 수 있게 한다.
@@ -284,7 +284,7 @@ class StationCrawler:
             region_id_map = {row.region_name: row.region_id for row in rows}
 
         if not region_id_map:
-            raise RuntimeError("regions 테이블이 비어 있습니다. db.init_table()을 먼저 실행하세요.")
+            raise RuntimeError("regions 테이블이 비어 있습니다. data.db.init_table()을 먼저 실행하세요.")
 
         # 저장 성공 횟수와 건너뜀 횟수이다.
         inserted = 0

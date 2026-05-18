@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 # models.py에 정의된 CarRegistrationItem 데이터 클래스를 가져온다.
 from crawling.models import CarRegistrationItem
 
-from crawling.db import REGIONS
+from data.db import REGIONS
 
 
 # .env 파일을 읽어서 os.getenv()로 사용할 수 있게 한다.
