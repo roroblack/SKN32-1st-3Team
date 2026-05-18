@@ -58,7 +58,8 @@ create table car_registrations(
     check (target_type in ('car_registration', 'station', 'faq'))
  );
 
- 
+
+/*
  -- 확인용
  select * from regions;
  select * from car_registrations;
@@ -74,3 +75,4 @@ SELECT * FROM hydrogen_charging_station LIMIT 5;
  truncate table hydrogen_charging_station;
  truncate table faq;
  truncate table crawl_stat;
+*/
