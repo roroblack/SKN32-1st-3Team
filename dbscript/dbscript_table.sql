@@ -35,7 +35,7 @@ create table car_registrations(
     station_name varchar(100) not null,
     address varchar(255),
     lat decimal(10, 7),
-    lon decimal(10, 7),
+    lon decimal(10, 7)
  );
  
  -- 외래키 추가
