@@ -51,7 +51,7 @@ from data.db import (
 )
 from data.repository import Repository
 from crawling.crawler_molit import MolitCarCrawler
-from crawling.crawler_faq import EvFaqCrawler
+from crawling.crawler_faq import EvFaqCrawler, crawl_all_faqs, crawl_all_and_save
 from crawling.crawler_station import StationCrawler
 from crawling.models import FaqItem
 from data.service import CrawlService, SchedulerService
@@ -94,7 +94,12 @@ _station_scheduler = _get_station_scheduler()
 # EvFaqCrawler 는 sync_playwright 기반이므로 실행 주기를 충분히 길게 설정하는 것을 권장한다.
 @st.cache_resource
 def _get_faq_scheduler() -> SchedulerService:
-    _svc = CrawlService(EvFaqCrawler(), Repository())
+    # crawl_all_and_save()는 int를 반환하므로 CrawlService가 repository를 거치지 않고
+    # crawler_faq.save_faqs(TRUNCATE+INSERT)를 통해 두 사이트 데이터를 모두 저장한다.
+    class _AllFaqCrawler:
+        def crawl(self):
+            return crawl_all_and_save()
+    _svc = CrawlService(_AllFaqCrawler())
     _sch = SchedulerService(_svc)
     _sch.add_interval_job(minutes=1440)    # 기본 24시간 주기
     _sch.start()
@@ -521,8 +526,8 @@ else:
         _faq_scheduler.resume()
         st.rerun()
 _new_faq_min = _fc2.number_input(
-    "주기(분)", min_value=60, max_value=10080,
-    value=_faq_interval_cur, step=60,
+    "주기(분)", min_value=5, max_value=10080,
+    value=_faq_interval_cur, step=5,
     key="faq_interval_input", label_visibility="collapsed",
 )
 if st.sidebar.button("↺  FAQ 주기 적용", key="btn_faq_apply", width='stretch'):
@@ -691,7 +696,7 @@ elif _page == "🗺️ 수소차 충전소":
             key=f"_stn_tbl_{selected_region}",
         )
         _new_rows = list(getattr(_tbl_evt.selection, "rows", None) or [])
-        _new_idx  = (_new_rows[0] - 1) if _new_rows else None  # 1-based → 0-based
+        _new_idx  = _new_rows[0] if _new_rows else None  # st.dataframe selection.rows는 0-based 위치값 반환
         if _new_idx != _sel_idx:
             if _new_idx is not None:
                 st.session_state[_stn_sel_key] = _new_idx
@@ -734,8 +739,7 @@ elif _page == "💬 FAQ":
         if _faq_backup is None:
             with st.spinner("📡 FAQ 데이터를 수집하고 있습니다 (ev.or.kr · hyundai.com)..."):
                 try:
-                    _faq_crawler = EvFaqCrawler()
-                    _faq_items = _faq_crawler.crawl()
+                    _faq_items = crawl_all_faqs()
                     if _faq_items:
                         save_faqs(_faq_items)
                         load_faqs.clear()
