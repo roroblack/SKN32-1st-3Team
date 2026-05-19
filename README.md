@@ -23,7 +23,7 @@ SKN32-1st-3Team/
 │  └─ service.py
 ├─ dbscript/
 │  ├─ __init__.py
-│  └─ dbscript.sql          # DB 스키마 SQL
+│  └─ dbscript_table.sql          # DB 스키마 SQL
 ├─ requirements.txt
 └─ README.md
 ```
