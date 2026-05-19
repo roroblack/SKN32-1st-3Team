@@ -1,6 +1,9 @@
 # 운영체제 환경변수 값을 읽기 위해 os 모듈을 가져온다.
 import os
 
+# CSV 파일 저장을 위해 csv 모듈을 가져온다.
+import csv
+
 # 답변 텍스트 앞의 'A' 표시를 제거하기 위해 re 모듈을 가져온다.
 import re
 
@@ -18,6 +21,9 @@ from bs4 import BeautifulSoup
 
 # .env 파일에 저장된 환경변수를 읽기 위해 load_dotenv를 가져온다.
 from dotenv import load_dotenv
+
+# HTTP 요청을 보내기 위해 requests 모듈을 가져온다.
+import requests
 
 # Playwright를 동기 방식으로 사용하기 위해 sync_playwright를 가져온다.
 # Playwright는 실제 브라우저를 실행해서 동적 웹페이지도 크롤링할 수 있게 해준다.
@@ -104,26 +110,66 @@ class EvFaqCrawler:
         return save_faqs(items)
 
     # Playwright 로 FAQ 목록의 모든 페이지 HTML 을 가져오는 내부 메서드이다.
+    # ev.or.kr 은 pnp4web.js 봇 보안 챌린지가 적용되어 있어 실제 브라우저 실행이 필요하다.
     def _fetch_all_pages(self) -> list[str]:
         # 각 페이지의 HTML 문자열을 담을 리스트이다.
         pages: list[str] = []
 
         # Playwright 실행 컨텍스트를 연다.
-        # with 구문을 사용하면 작업이 끝난 뒤 자원이 자동 정리된다.
         with sync_playwright() as p:
-            # Chromium 브라우저를 실행한다.
-            # headless=True 는 브라우저 창을 화면에 보이지 않게 실행한다는 뜻이다.
-            browser = p.chromium.launch(headless=True)
+            # AutomationControlled 감지를 비활성화해 봇 차단을 우회한다.
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+            )
+
+            # 뷰포트·locale 을 설정한 컨텍스트를 만든다.
+            # 뷰포트와 locale 이 없으면 보안 챌린지가 통과되지 않는다.
+            ctx = browser.new_context(
+                user_agent=USER_AGENT,
+                viewport={"width": 1280, "height": 800},
+                locale="ko-KR",
+            )
 
             # 새 브라우저 페이지를 만든다.
-            page = browser.new_page(user_agent=USER_AGENT)
+            page = ctx.new_page()
 
             # FAQ 목록 URL 로 이동한다.
-            # wait_until="networkidle" 은 네트워크 요청이 어느 정도 끝날 때까지 기다린다.
-            page.goto(self.url, wait_until="networkidle", timeout=60_000)
+            # domcontentloaded 시점까지 기다려 pnp4web.js 가 즉시 실행되게 한다.
+            page.goto(self.url, wait_until="domcontentloaded", timeout=60_000)
+
+            # pnp4web.js 보안 챌린지 흐름:
+            #   1) 챌린지 페이지 로드 → networkidle 발화 (여기서 첫 번째 networkidle 소비)
+            #   2) 챌린지 JS 실행 후 실제 FAQ 페이지로 리다이렉트
+            #   3) FAQ 페이지 로드 → networkidle 재발화
+            # 고정 대기(3 s) 로 리다이렉트가 시작될 시간을 확보한 뒤
+            # 두 번째 networkidle 로 FAQ 페이지가 완전히 안정될 때까지 기다린다.
+            page.wait_for_load_state("networkidle", timeout=30_000)  # 챌린지 완료
+            page.wait_for_timeout(3_000)                              # 리다이렉트 대기
+            page.wait_for_load_state("networkidle", timeout=30_000)  # FAQ 페이지 안정화
+
+            # ev.or.kr 사이트 개편으로 FAQ URL 이 사라진 경우 에러 페이지가 나타난다.
+            # ".error_wrap .error_tit" 또는 "페이지를 표시할 수 없습니다." 텍스트로 감지한다.
+            # 감지되면 빈 리스트를 반환하고 호출자에서 hyundai.com 만 처리하도록 한다.
+            if page.locator(".error_wrap .error_tit").count() > 0:
+                print(
+                    f"[WARN] ev.or.kr FAQ 페이지를 찾을 수 없습니다 (사이트 개편). "
+                    f"URL: {self.url}"
+                )
+                browser.close()
+                return []
 
             # 질문 제목(.faq_title > .title)이 나타날 때까지 최대 30초 대기한다.
-            page.wait_for_selector(".faq_title > .title", timeout=30_000)
+            # selector 가 끝내 나타나지 않으면 (사이트 구조 변경 등) 경고 후 빈 리스트 반환.
+            try:
+                page.wait_for_selector(".faq_title > .title", timeout=30_000)
+            except Exception as e:
+                print(
+                    f"[WARN] ev.or.kr FAQ 항목 selector(.faq_title > .title) 를 찾지 못했습니다. "
+                    f"({type(e).__name__})"
+                )
+                browser.close()
+                return []
 
             # 다음 페이지가 없을 때까지 반복한다.
             while True:
@@ -386,14 +432,46 @@ def save_faqs(items: list[FaqItem]) -> int:
         f"(ev.or.kr: {ev_count}, hyundai.com: {hd_count})"
     )
 
+    # tmp_down 폴더에 CSV 파일로도 저장한다.
+    tmp_down = os.path.join(os.path.dirname(__file__), "tmp_down")
+    os.makedirs(tmp_down, exist_ok=True)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    csv_path = os.path.join(tmp_down, f"faq_{timestamp}.csv")
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["source_site", "category", "question", "answer"])
+        writer.writeheader()
+        for item in items:
+            writer.writerow({
+                "source_site": item.source_site,
+                "category": item.category,
+                "question": item.question,
+                "answer": item.answer,
+            })
+    print(f"[CSV] FAQ 저장 완료: {csv_path}")
+
     # 저장된 건수를 반환한다.
     return len(items)
 
 
 # ev.or.kr + hyundai.com FAQ 를 모두 수집한다.
 def crawl_all_faqs(limit: int | None = None) -> list[FaqItem]:
-    # 두 사이트 크롤 결과를 하나의 리스트로 합친다.
-    items = EvFaqCrawler().crawl() + HyundaiFaqCrawler().crawl()
+    # ev.or.kr 은 사이트 개편/봇 차단 등으로 실패할 가능성이 있으므로
+    # 예외를 흡수해서 hyundai.com 수집을 계속하도록 한다.
+    ev_items: list[FaqItem] = []
+    try:
+        ev_items = EvFaqCrawler().crawl()
+    except Exception as e:
+        print(f"[WARN] EvFaqCrawler 실패: {type(e).__name__}: {e}")
+
+    # hyundai.com 도 동일하게 예외를 흡수한다.
+    hd_items: list[FaqItem] = []
+    try:
+        hd_items = HyundaiFaqCrawler().crawl()
+    except Exception as e:
+        print(f"[WARN] HyundaiFaqCrawler 실패: {type(e).__name__}: {e}")
+
+    # 두 사이트 결과를 합친다.
+    items = ev_items + hd_items
 
     # limit 이 지정된 경우 앞에서부터 잘라낸다.
     if limit is not None:
