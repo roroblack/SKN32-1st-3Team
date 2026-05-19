@@ -124,7 +124,7 @@ def _get_car_scheduler() -> SchedulerService:
             return 0
     _svc = CrawlService(_CarRegCrawler())
     _sch = SchedulerService(_svc)
-    _sch.add_interval_job(minutes=60)   # 기본 1시간 주기
+    _sch.add_interval_job(minutes=1)   # 기본 1시간 주기
     _sch.start()
     _sch.pause()                        # 처음엔 정지 상태; 사용자가 사이드바에서 켠다
     return _sch
@@ -521,8 +521,8 @@ else:
         _car_scheduler.resume()
         st.rerun()
 _new_car_min = _cc2.number_input(
-    "주기(분)", min_value=10, max_value=10080,
-    value=_car_interval_cur, step=10,
+    "주기(분)", min_value=1, max_value=10080,
+    value=_car_interval_cur, step=1,
     key="car_interval_input", label_visibility="collapsed",
 )
 if st.sidebar.button("↺  등록현황 주기 적용", key="btn_car_apply", width='stretch'):
