@@ -5,18 +5,25 @@
 
 ```
 SKN32-1st-3Team/
-├─ common/
-│  ├─ __init__.py
-│  ├─ exceptions.py
-│  └─ mysqlConnectTemplate.py
+├─ app.py                   # 전국 수소충전소 지도 (Streamlit)
+├─ assets/
+│  ├─ ERD.png
 ├─ crawling/
-│  └─ __init__.py
+│  ├─ __init__.py
+│  ├─ crawler_molit.py      # 국토교통부 수소차 등록 현황 크롤러
+│  ├─ crawler_station.py    # 공공데이터 포털 수소충전소 크롤러
+│  ├─ crawler_faq_ev.py       # EV 무공해차 통합누리집 FAQ 크롤러
+│  ├─ models.py             # 데이터 클래스
+│  ├─ molit_downloads/      # MOLIT 엑셀 임시 저장 (자동 생성)
+│  └─ station_downloads/    # 충전소 CSV 저장 (자동 생성)
 ├─ data/
-│  └─ __init__.py
+│  ├─ __init__.py
+│  ├─ db.py                 # MySQL 연결·스키마·조회 함수
+│  ├─ repository.py
+│  └─ service.py
 ├─ dbscript/
-│  └─ __init__.py
-├─ model/
-│  └─ __init__.py
+│  ├─ __init__.py
+│  └─ dbscript.sql          # DB 스키마 SQL
 ├─ requirements.txt
 └─ README.md
 ```
