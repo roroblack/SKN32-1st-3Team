@@ -79,7 +79,12 @@ st.set_page_config(
 # cache_resource 가 이 문제를 방지하고 같은 인스턴스를 계속 반환한다.
 @st.cache_resource
 def _get_station_scheduler() -> SchedulerService:
-    _svc = CrawlService(StationCrawler())          # StationCrawler는 자체적으로 DB 저장까지 처리
+    class _StationCrawler:
+        def crawl(self):
+            saved_count = StationCrawler().crawl()
+            return _clear_cache_after_scheduled_crawl("station", saved_count)
+
+    _svc = CrawlService(_StationCrawler())          # StationCrawler는 자체적으로 DB 저장까지 처리
     _sch = SchedulerService(_svc)
     _sch.add_interval_job(minutes=5)               # 5분마다 수소충전소 데이터 갱신
     _sch.start()
@@ -99,7 +104,9 @@ def _get_faq_scheduler() -> SchedulerService:
     # crawler_faq.save_faqs(TRUNCATE+INSERT)를 통해 두 사이트 데이터를 모두 저장한다.
     class _AllFaqCrawler:
         def crawl(self):
-            return crawl_all_and_save()
+            saved_count = crawl_all_and_save()
+            return _clear_cache_after_scheduled_crawl("faq", saved_count)
+
     _svc = CrawlService(_AllFaqCrawler())
     _sch = SchedulerService(_svc)
     _sch.add_interval_job(minutes=1440)    # 기본 24시간 주기
@@ -119,9 +126,10 @@ def _get_car_scheduler() -> SchedulerService:
             _c = MolitCarCrawler()
             _items = _c.crawl()
             if _items:
-                save_car_registrations(_items)
-                return len(_items)
+                saved_count = save_car_registrations(_items)
+                return _clear_cache_after_scheduled_crawl("car_registration", saved_count)
             return 0
+
     _svc = CrawlService(_CarRegCrawler())
     _sch = SchedulerService(_svc)
     _sch.add_interval_job(minutes=1)   # 기본 1시간 주기
@@ -335,6 +343,37 @@ def load_faqs() -> list[ tuple[str, str]]:
     return rows
 
 
+def _clear_cache_after_scheduled_crawl(target_type: str, saved_count: int) -> int:
+    """스케줄러 크롤링 저장 완료 후 화면 데이터 캐시를 비우고 다시 불러온다."""
+    if saved_count <= 0:
+        return saved_count
+
+    try:
+        if target_type == "car_registration":
+            load_registrations.clear()
+            load_stat_month.clear()
+            _load_last_crawled.clear()
+            load_registrations()
+            load_stat_month()
+            _load_last_crawled()
+        elif target_type == "station":
+            load_stations.clear()
+            load_stations()
+        elif target_type == "faq":
+            load_faqs.clear()
+            _load_faq_last_crawled.clear()
+            load_faqs()
+            _load_faq_last_crawled()
+        else:
+            return saved_count
+
+        print(f"[CACHE] {target_type} 캐시 재적재 완료 ({saved_count}건 저장)")
+    except Exception as cache_error:
+        print(f"[WARN] {target_type} 캐시 재적재 실패: {cache_error}")
+
+    return saved_count
+
+
 # ──────────────────────────────────────────────────────────────
 # 사이드바 — 네비게이션 메뉴
 # ──────────────────────────────────────────────────────────────
@@ -495,6 +534,7 @@ if (    "regs_df_override"          in st.session_state
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("⏱ 자동 크롤링 스케줄러")
+st.sidebar.caption("스케줄 작업 저장 완료 후 관련 페이지 캐시를 자동으로 다시 불러옵니다.")
 
 # ── 수소차 등록현황 스케줄러 ─────────────────────────────────────
 st.sidebar.markdown("**🟠 수소차 등록현황**")
