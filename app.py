@@ -16,6 +16,8 @@
 """
 
 # 데이터셋 ZIP 직렬화에 사용한다.
+import hashlib
+import html
 import io
 import json
 import zipfile
@@ -343,6 +345,12 @@ def load_faqs() -> list[ tuple[str, str]]:
     return rows
 
 
+def _plain_text_to_html(text: str) -> str:
+    """FAQ 본문을 Markdown 해석 없이 줄바꿈만 유지해 표시하기 위한 HTML 문자열로 변환한다."""
+    body = html.escape(str(text or "")).replace("~", "&#126;")
+    return f'<div style="white-space: pre-wrap; line-height: 1.6;">{body}</div>'
+
+
 def _clear_cache_after_scheduled_crawl(target_type: str, saved_count: int) -> int:
     """스케줄러 크롤링 저장 완료 후 화면 데이터 캐시를 비우고 다시 불러온다."""
     if saved_count <= 0:
@@ -489,9 +497,15 @@ uploaded_zip = st.sidebar.file_uploader(
     type=["zip"],
     key="dataset_uploader",
 )
-if uploaded_zip is not None:
+if uploaded_zip is None:
+    st.session_state.pop("dataset_upload_token", None)
+else:
+    uploaded_zip_bytes = uploaded_zip.getvalue()
+    uploaded_zip_token = hashlib.sha256(uploaded_zip_bytes).hexdigest()
+
+if uploaded_zip is not None and uploaded_zip_token != st.session_state.get("dataset_upload_token"):
     try:
-        with zipfile.ZipFile(uploaded_zip) as zf:
+        with zipfile.ZipFile(io.BytesIO(uploaded_zip_bytes)) as zf:
             names           = zf.namelist()
             new_regs        = pd.read_csv(zf.open("car_registrations.csv")) \
                 if "car_registrations.csv"          in names else None
@@ -510,10 +524,15 @@ if uploaded_zip is not None:
                 (q, a) for q, a in zip(new_faqs["question"], new_faqs["answer"].fillna(""))
             ]
 
+        st.session_state["dataset_upload_token"] = uploaded_zip_token
+
         # 리로드 전에 위젯 key를 삭제해서 Streamlit이 기본값으로 다시 그리게 한다.
         # 삭제하지 않으면 이전 위젯 값이 남아 필터가 잘못 적용될 수 있다.
-        for k in ("year_range", "selected_region", "dataset_uploader"):
+        for k in ("year_range", "year_range_saved", "selected_region", "selected_region_saved"):
             st.session_state.pop(k, None)
+        for k in list(st.session_state.keys()):
+            if str(k).startswith(("_stn_sel_key_", "_stn_tbl_")):
+                st.session_state.pop(k, None)
         st.sidebar.success(
             f"불러오기 완료  ·  등록    {0 if new_regs      is None else len(new_regs):,} / "
             f"충전소                     {0 if new_stations  is None else len(new_stations):,} / "
@@ -744,8 +763,8 @@ border:1px solid #e9d5ff;min-height:130px'>
 
     st.markdown("---")
     _sm1, _sm2, _sm3 = st.columns(3)
-    _sm1.metric("전국 수소차 누적 등록", f"{int(regs_df_db['count'].sum()):,} 대")
-    _sm2.metric("전국 수소충전소", f"{len(stations_df_db):,} 곳")
+    _sm1.metric("전국 수소차 누적 등록", f"{nation_total:,} 대")
+    _sm2.metric("전국 수소충전소", f"{len(stations_df):,} 곳")
     _sm3.metric("최신 데이터 기준", year_label(slider_year_max))
     st.stop()
 
@@ -901,8 +920,9 @@ elif _page == "💬 FAQ":
         st.info("검색 결과가 없습니다.")
     else:
         for q, a in _flist:
-            with st.expander(f"Q. {q}"):
-                st.write(a)
+            _question_label = str(q).replace("~", "\\~")
+            with st.expander(f"Q. {_question_label}"):
+                st.markdown(_plain_text_to_html(a), unsafe_allow_html=True)
     st.caption(f"총 {len(_faqs)}개 항목  ·  출처: faq 테이블")
     st.stop()
 
@@ -1114,6 +1134,7 @@ chart_type = st.radio(
     "차트 유형",
     ["바 차트", "원형 차트"],
     horizontal=True,
+    key="region_chart_type",
     label_visibility="collapsed",
 )
 
