@@ -329,8 +329,10 @@ div[data-testid="stSlider"] [class*="TrackFill"] { background: #60a5fa !importan
 st.sidebar.markdown("---")
 
 # DB에서 로드된 연도 범위를 슬라이더 기본값으로 사용한다.
-year_min        = int(regs_df["stat_year"].min())
-year_max        = int(regs_df["stat_year"].max())
+# regs_df가 비어있으면 stat_year.min()/max()가 NaN을 반환하므로 기본값을 사용한다.
+_stat_years     = regs_df["stat_year"].dropna()
+year_min        = int(_stat_years.min()) if not _stat_years.empty else CURRENT_YEAR
+year_max        = int(_stat_years.max()) if not _stat_years.empty else CURRENT_YEAR
 # 슬라이더 최댓값 = 실제 데이터 최댓값으로 고정 → 선형 그래프 x축과 항상 동기화된다.
 slider_year_max = year_max
 # DB에 실제로 데이터가 있는 시도만 selectbox에 표시한다.
@@ -503,7 +505,7 @@ if st.sidebar.button("↺  수소충전소 주기 적용", key="btn_stn_apply", 
 
 # ── FAQ 스케줄러 ─────────────────────────────────────────────
 st.sidebar.markdown("**🟣 FAQ**")
-st.sidebar.caption("⚠️ Playwright 기반 크롤러 · 건당 2~3분 소요 · 긴 주기 권장")
+st.sidebar.caption("⚠️ Playwright 기반 크롤러 · 보안 챌린지 포함 · 2~3분 소요 · 긴 주기 권장")
 _faq_running      = _faq_scheduler.is_job_running()
 _faq_interval_cur = _faq_scheduler.get_interval_minutes() or 1440
 if _faq_running:
