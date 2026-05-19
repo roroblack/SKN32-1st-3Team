@@ -2,6 +2,7 @@
 # 예: DB_HOST, DB_USER, DB_PASSWORD 같은 값을 읽을 때 사용한다.
 import os
 from datetime import datetime
+from pathlib import Path
 
 # .env 파일에 작성된 설정값을 파이썬 환경변수로 불러오기 위해 사용한다.
 # .env 파일에는 DB 접속 정보처럼 코드에 직접 쓰기 부담스러운 값을 저장한다.
@@ -10,36 +11,57 @@ from dotenv import load_dotenv
 # create_engine은 SQLAlchemy에서 DB 연결 엔진을 만드는 함수이다.
 # text는 문자열 SQL문을 SQLAlchemy가 실행 가능한 SQL 객체로 변환할 때 사용한다.
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 
-# 현재 프로젝트 폴더의 .env 파일을 읽어온다.
-# 이 코드를 실행해야 os.getenv("DB_HOST")처럼 .env 값을 가져올 수 있다.
-load_dotenv()
+_ROOT = Path(__file__).resolve().parent.parent
+_ENV_PATH = _ROOT / ".env"
+
+
+# 프로젝트 루트의 .env 파일을 강제로 읽어온다.
+# .env 파일이 없으면 즉시 에러를 발생시켜, 잘못된 기본값으로 동작하는 것을 막는다.
+if not _ENV_PATH.exists():
+    raise FileNotFoundError(
+        f".env 파일을 찾을 수 없습니다. 위치: {_ENV_PATH}\n"
+        "DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME 값을 .env 파일에 설정하세요."
+    )
+
+# override=True 로 .env 값을 항상 우선 적용한다.
+load_dotenv(_ENV_PATH, override=True)
+
+
+def _require_env(name: str) -> str:
+    """
+    .env 에 정의된 환경변수 값을 무조건 읽어온다.
+    값이 없거나 빈 문자열이면 즉시 에러를 발생시킨다.
+    하드코딩된 기본값은 절대 사용하지 않는다.
+    """
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        raise RuntimeError(
+            f"환경변수 {name} 값이 .env 파일에 설정되어 있지 않습니다. "
+            f".env 파일({_ENV_PATH})에 {name} 값을 추가하세요."
+        )
+    return value.strip()
 
 
 # MySQL 데이터베이스 연결 엔진을 생성하는 함수이다.
-# 다른 파일에서 get_engine()을 호출하면 MySQL에 연결할 수 있는 객체를 받을 수 있다.
+# 모든 접속 정보는 오직 .env 파일에서만 읽어온다.
 def get_engine():
-    # .env 파일에서 DB_HOST 값을 읽는다.
-    # 값이 없으면 기본값으로 "localhost"를 사용한다.
-    # localhost는 현재 내 컴퓨터를 의미한다.
-    host = os.getenv("DB_HOST", "localhost")
+    # .env 파일에서 DB 접속 정보를 읽는다. 하나라도 비어 있으면 에러가 난다.
+    host = _require_env("DB_HOST")
+    port_text = _require_env("DB_PORT")
+    user = _require_env("DB_USER")
+    password = _require_env("DB_PASSWORD")
+    db_name = _require_env("DB_NAME")
 
-    # .env 파일에서 DB_PORT 값을 읽는다.
-    # 값이 없으면 MySQL 기본 포트인 "3306"을 사용한다.
-    port = os.getenv("DB_PORT", "3306")
-
-    # .env 파일에서 DB_USER 값을 읽는다.
-    # 값이 없으면 기본값으로 "student"를 사용한다.
-    user = os.getenv("DB_USER", "student")
-
-    # .env 파일에서 DB_PASSWORD 값을 읽는다.
-    # 값이 없으면 기본값으로 "Student80*"를 사용한다.
-    password = os.getenv("DB_PASSWORD", "student80")
-
-    # .env 파일에서 DB_NAME 값을 읽는다.
-    # 값이 없으면 기본값으로 "mydb"를 사용한다.
-    db_name = os.getenv("DB_NAME", "crawler_db")
+    # 포트는 정수여야 한다.
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError(
+            f".env 의 DB_PORT 는 숫자여야 합니다. 현재 값: {port_text!r}"
+        ) from exc
 
     # SQLAlchemy가 MySQL에 접속하기 위한 DB URL을 만든다.
     #
@@ -51,7 +73,15 @@ def get_engine():
     #
     # charset=utf8mb4:
     #   한글, 이모지, 특수문자까지 안정적으로 저장하기 위한 문자셋 설정이다.
-    db_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{db_name}?charset=utf8mb4"
+    db_url = URL.create(
+        "mysql+pymysql",
+        username=user,
+        password=password,
+        host=host,
+        port=port,
+        database=db_name,
+        query={"charset": "utf8mb4"},
+    )
 
     # create_engine()은 DB 연결을 관리하는 엔진 객체를 만든다.
     #

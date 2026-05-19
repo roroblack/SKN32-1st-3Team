@@ -1,14 +1,13 @@
-import os
 from datetime import datetime
 from typing import Literal
 
 import pandas as pd
 from dataclasses import asdict, fields
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 
 from crawling.models import *
+from data.db import get_engine
 
 # DB 작업을 처리하는 클래스이다.
 class Repository:
@@ -67,30 +66,7 @@ class Repository:
 
     # DB 연결을 관리하는 엔진 객체를 만들고, 이를 반환하는 메소드이다.
     def _get_engine(self):
-        # 프로젝트 폴더의 .env 파일을 불러온다.
-        load_dotenv()
-
-        # 테스트 완료 후 기본값 삭제
-        # .env 파일에서 DB 환경 변수를 불러온다.
-        # 불러올 수 없는 경우 기본값을 사용한다.
-        host = os.getenv('DB_HOST', 'localhost')
-        port = os.getenv('DB_PORT', 3306)
-        user = os.getenv('DB_USER', 'student')
-        password = os.getenv('DB_PASSWORD', 'student80')
-        db_name = os.getenv('DB_NAME', 'crawler_db')
-
-        # DB에 접속하기 위한 DB URL을 만든다.
-        # 한글을 안전하게 저장하기 위해 utf8mb4 문자셋을 사용한다.
-        db_url = f'mysql+pymysql://{user}:{password}@{host}:{port}/{db_name}?charset=utf8mb4'
-
-        # DB 연결을 관리하는 엔진 객체를 만들고, 이를 반환한다.
-        # pool_pre_ping 옵션
-        #   DB에 연결하기 전에 연결이 살아 있는지 확인한다.
-        #   연결이 유효하면 그대로 사용하고, 아니면 새 연결을 만든다.
-        #   매 연결마다 약간의 오버헤드가 있지만, 연결 문제로 인한 오류를 줄여준다.
-        # pool_recycle 옵션
-        #   초 단위로 지정한 시간이 지나면 기존 연결을 버리고, 새 연결을 만든다.
-        return create_engine(db_url, pool_pre_ping=True, pool_recycle=3600)
+        return get_engine()
     
     # 아이템 리스트를 DB에 저장하는 메소드이다.
     # 저장한 아이템 개수를 반환한다.
