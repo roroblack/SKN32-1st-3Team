@@ -651,8 +651,8 @@ else:
         _faq_scheduler.resume()
         st.rerun()
 _new_faq_min = _fc2.number_input(
-    "주기(분)", min_value=5, max_value=10080,
-    value=_faq_interval_cur, step=5,
+    "주기(분)", min_value=1, max_value=10080,
+    value=_faq_interval_cur, step=1,
     key="faq_interval_input", label_visibility="collapsed",
 )
 if st.sidebar.button("↺  FAQ 주기 적용", key="btn_faq_apply", width='stretch'):
