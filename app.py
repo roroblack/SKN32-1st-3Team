@@ -83,6 +83,7 @@ def _get_station_scheduler() -> SchedulerService:
     _sch = SchedulerService(_svc)
     _sch.add_interval_job(minutes=5)               # 5분마다 수소충전소 데이터 갱신
     _sch.start()
+    _sch.pause()                           # 처음엔 정지 상태; 사용자가 사이드바에서 켠다
     return _sch
 
 
@@ -108,6 +109,28 @@ def _get_faq_scheduler() -> SchedulerService:
 
 
 _faq_scheduler = _get_faq_scheduler()
+
+
+# 수소차 등록현황 스케줄러 — MolitCarCrawler를 래핑해 save_car_registrations까지 처리
+@st.cache_resource
+def _get_car_scheduler() -> SchedulerService:
+    class _CarRegCrawler:
+        def crawl(self):
+            _c = MolitCarCrawler()
+            _items = _c.crawl()
+            if _items:
+                save_car_registrations(_items)
+                return len(_items)
+            return 0
+    _svc = CrawlService(_CarRegCrawler())
+    _sch = SchedulerService(_svc)
+    _sch.add_interval_job(minutes=60)   # 기본 1시간 주기
+    _sch.start()
+    _sch.pause()                        # 처음엔 정지 상태; 사용자가 사이드바에서 켠다
+    return _sch
+
+
+_car_scheduler = _get_car_scheduler()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -350,14 +373,19 @@ if _page in ("📈 수소차 등록현황", "🗺️ 수소차 충전소"):
         # 홈 화면으로 이동하면 위젯 key가 session_state에서 자동 삭제되므로,
         # 별도 shadow key(year_range_saved)에 값을 보존해 페이지 복귀 시 복원한다.
         _default_year_range = st.session_state.get("year_range_saved", (year_min, slider_year_max))
-        year_range = st.sidebar.slider(
-            "등록 기간 선택",
-            min_value=year_min,
-            max_value=slider_year_max,
-            value=_default_year_range,
-            step=1,
-            key="year_range",
-        )
+        if year_min < slider_year_max:
+            year_range = st.sidebar.slider(
+                "등록 기간 선택",
+                min_value=year_min,
+                max_value=slider_year_max,
+                value=_default_year_range,
+                step=1,
+                key="year_range",
+            )
+        else:
+            # 데이터가 한 해만 있을 경우 슬라이더 대신 고정 텍스트 표시
+            year_range = (year_min, slider_year_max)
+            st.sidebar.markdown("**등록 기간 선택**")
         st.session_state["year_range_saved"] = year_range
         st.sidebar.caption(
             f"기간: **{year_label(year_range[0])} ~ {year_label(year_range[1])}**"
@@ -468,6 +496,42 @@ if (    "regs_df_override"          in st.session_state
 st.sidebar.markdown("---")
 st.sidebar.subheader("⏱ 자동 크롤링 스케줄러")
 
+# ── 수소차 등록현황 스케줄러 ─────────────────────────────────────
+st.sidebar.markdown("**🟠 수소차 등록현황**")
+st.sidebar.caption("ℹ️ 국토교통부 데이터 · 월별 갱신 · 약 10초 소요")
+_car_running      = _car_scheduler.is_job_running()
+_car_interval_cur = _car_scheduler.get_interval_minutes() or 60
+if _car_running:
+    try:
+        _car_next = _car_scheduler.scheduler.get_job(
+            _car_scheduler.JOB_ID).next_run_time.strftime("%H:%M:%S")
+    except (AttributeError, TypeError):
+        _car_next = "-"
+    st.sidebar.success(f"🟢 실행 중 · {_car_interval_cur}분 간격 · 다음: {_car_next}")
+else:
+    st.sidebar.error("🔴 일시정지")
+
+_cc1, _cc2 = st.sidebar.columns([1, 1])
+if _car_running:
+    if _cc1.button("⏸ 일시정지", key="btn_car_pause", width='stretch'):
+        _car_scheduler.pause()
+        st.rerun()
+else:
+    if _cc1.button("▶ 재시작", key="btn_car_resume", width='stretch'):
+        _car_scheduler.resume()
+        st.rerun()
+_new_car_min = _cc2.number_input(
+    "주기(분)", min_value=10, max_value=10080,
+    value=_car_interval_cur, step=10,
+    key="car_interval_input", label_visibility="collapsed",
+)
+if st.sidebar.button("↺  등록현황 주기 적용", key="btn_car_apply", width='stretch'):
+    _was_car_paused = not _car_scheduler.is_job_running()
+    _car_scheduler.add_interval_job(minutes=int(_new_car_min))
+    if _was_car_paused:
+        _car_scheduler.pause()
+    st.rerun()
+
 # ── 수소충전소 스케줄러 ─────────────────────────────────────────
 st.sidebar.markdown("**🔵 수소충전소**")
 _stn_running      = _station_scheduler.is_job_running()
@@ -505,7 +569,7 @@ if st.sidebar.button("↺  수소충전소 주기 적용", key="btn_stn_apply", 
 
 # ── FAQ 스케줄러 ─────────────────────────────────────────────
 st.sidebar.markdown("**🟣 FAQ**")
-st.sidebar.caption("⚠️ Playwright 기반 크롤러 · 보안 챌린지 포함 · 2~3분 소요 · 긴 주기 권장")
+st.sidebar.caption("ℹ️ Playwright 기반 크롤러 · 보안 챌린지 포함 · 약 1분 소요")
 _faq_running      = _faq_scheduler.is_job_running()
 _faq_interval_cur = _faq_scheduler.get_interval_minutes() or 1440
 if _faq_running:
