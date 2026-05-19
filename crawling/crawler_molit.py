@@ -1,6 +1,7 @@
 # 운영체제 환경변수 값을 읽기 위해 os 모듈을 가져온다.
 import os
 import io
+import csv
 
 # 현재 날짜와 시간을 저장하기 위해 datetime을 가져온다.
 from datetime import datetime
@@ -46,7 +47,7 @@ class MolitCarCrawler:
 
         # 엑셀 임시 저장 폴더 (프로젝트 내부, .gitignore에 추가 권장)
         self.download_dir = os.path.join(
-            os.path.dirname(__file__), "molit_downloads"
+            os.path.dirname(__file__), "tmp_down"
         )
         os.makedirs(self.download_dir, exist_ok=True)
 
@@ -105,6 +106,22 @@ class MolitCarCrawler:
                 continue
             items = self._parse(xlsx_bytes, year, fuel_filter)
             all_items.extend(items)
+
+        # tmp_down 폴더에 CSV 파일로 저장한다.
+        if all_items:
+            os.makedirs(self.download_dir, exist_ok=True)
+            timestamp = now.strftime("%Y%m%d_%H%M%S")
+            csv_path = os.path.join(self.download_dir, f"car_registrations_{timestamp}.csv")
+            with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.DictWriter(f, fieldnames=["stat_year", "region", "count"])
+                writer.writeheader()
+                for item in all_items:
+                    writer.writerow({
+                        "stat_year": item.stat_year,
+                        "region": item.region,
+                        "count": item.count,
+                    })
+            print(f"[CSV] 자동차등록현황 저장 완료: {csv_path}")
 
         return all_items
 
@@ -315,3 +332,12 @@ class MolitCarCrawler:
             for r, c in region_totals.items()
             if c > 0
         ]
+
+if __name__ == "__main__":
+    from data.db import save_car_registrations
+    items = MolitCarCrawler().crawl()
+    if items:
+        save_car_registrations(items)
+        print(f"[완료] 수소차 등록현황 {len(items)}건 DB 저장")
+    else:
+        print("[경고] 수집된 데이터 없음")

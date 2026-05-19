@@ -63,9 +63,9 @@ class StationCrawler:
         self.url = "https://www.data.go.kr/data/15066838/fileData.do"
 
         # 내려받은 CSV 파일을 저장할 폴더 경로이다.
-        # 이 스크립트 파일과 같은 폴더 아래 station_downloads 폴더를 사용한다.
+        # 이 스크립트 파일과 같은 폴더 아래 tmp_down 폴더를 사용한다.
         self.download_dir = os.path.join(
-            os.path.dirname(__file__), "station_downloads"
+            os.path.dirname(__file__), "tmp_down"
         )
 
     # 외부에서 호출하는 대표 크롤링 메서드이다.
