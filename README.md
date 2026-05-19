@@ -1,4 +1,32 @@
-# 💧 물로간다
+<div align="center">
+
+# 🚗 물로간다
+### 수소차 등록 현황 · 충전소 · FAQ 통합 대시보드
+
+![Python](https://img.shields.io/badge/Python-3.12.7-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.57.0-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-1.59.0-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)
+
+</div>
+
+---
+
+## 👥 팀 소개
+
+<div align="center">
+
+### 🏷️ Team **카데이터** | Project **물로간다**
+
+| 역할 | 이름 | 담당 |
+|:---:|:---:|:---|
+| 👑 팀장 | 최연우 | Streamlit GUI 구현 | 발표 |
+| 🗄️ 팀원 | 권소라 | MySQL DB 설계 및 데이터 저장 | PPT |
+| 🕷️ 팀원 | 김지혜 | 크롤링 (bs4, Playwright) | 발표 |
+| 🔗 팀원 | 박회종 | 파이썬 ↔ MySQL 연동 조회 시스템 | 시연 |
+
+</div>
+
 
 국토교통부 통계누리, 공공데이터 포털, EV 무공해차 통합누리집에서 수소차 등록 현황 · 수소충전소 · FAQ 데이터를 크롤링하여 MySQL에 저장하고, Streamlit으로 시각화하는 프로젝트입니다.
 

@@ -30,3 +30,7 @@ Thumbs.db
 *.csv
 *.xlsx
 *.json
+
+# test
+.lagacy/
+.crawling/station_downloads/

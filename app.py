@@ -720,8 +720,34 @@ elif _page == "🗺️ 수소차 충전소":
     if _map_st.empty:
         st.info("해당 지역의 충전소 데이터가 없습니다.")
     else:
-        _stn_sel_key = f"_stn_sel_{selected_region}"
-        _sel_idx = st.session_state.get(_stn_sel_key, None)
+        def _coord_key(v) -> str:
+            try:
+                return f"{float(v):.7f}"
+            except (TypeError, ValueError):
+                return str(v or "").strip()
+
+        _map_st["_station_key"] = _map_st.apply(
+            lambda r: "|".join([
+                str(r.get("region_name", "")).strip(),
+                str(r.get("station_name", "")).strip(),
+                str(r.get("address", "")).strip(),
+                _coord_key(r.get("lat")),
+                _coord_key(r.get("lon")),
+            ]),
+            axis=1,
+        )
+        _map_st["_station_key"] = (
+            _map_st["_station_key"]
+            + "|"
+            + _map_st.groupby("_station_key").cumcount().astype(str)
+        )
+        _stn_sel_key = f"_stn_sel_key_{selected_region}"
+        _sel_station_key = st.session_state.get(_stn_sel_key)
+        _key_to_idx = {k: i for i, k in enumerate(_map_st["_station_key"].tolist())}
+        if _sel_station_key not in _key_to_idx:
+            _sel_station_key = None
+            st.session_state.pop(_stn_sel_key, None)
+        _sel_idx = _key_to_idx.get(_sel_station_key)
         _sel_row = _map_st.iloc[_sel_idx] if _sel_idx is not None else None
         _m = folium.Map(
             location=(
@@ -732,7 +758,7 @@ elif _page == "🗺️ 수소차 충전소":
             zoom_start=14 if _sel_row is not None else (7 if selected_region == "전국" else 10),
         )
         for _ri, _r in _map_st.iterrows():
-            _is_sel = (_sel_idx is not None and _ri == _sel_idx)
+            _is_sel = (_sel_station_key is not None and _r["_station_key"] == _sel_station_key)
             folium.Marker(
                 location=[_r["lat"], _r["lon"]],
                 popup=folium.Popup(
@@ -752,20 +778,26 @@ elif _page == "🗺️ 수소차 충전소":
         st.subheader("충전소 목록")
         _disp_cols = ["station_name", "address", "region_name"]
         _disp_df = _map_st[_disp_cols].copy()
-        _disp_df.columns = ["충전소명", "주소", "지역"]
-        _disp_df.index += 1
+        _disp_df.insert(0, "번호", range(1, len(_disp_df) + 1))
+        _disp_df.columns = ["번호", "충전소명", "주소", "지역"]
         _tbl_evt = st.dataframe(
             _disp_df,
             width='stretch',
+            hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
             key=f"_stn_tbl_{selected_region}",
         )
         _new_rows = list(getattr(_tbl_evt.selection, "rows", None) or [])
-        _new_idx  = _new_rows[0] if _new_rows else None  # st.dataframe selection.rows는 0-based 위치값 반환
-        if _new_idx != _sel_idx:
-            if _new_idx is not None:
-                st.session_state[_stn_sel_key] = _new_idx
+        _new_idx  = _new_rows[0] if _new_rows else None
+        _new_station_key = (
+            _map_st.iloc[_new_idx]["_station_key"]
+            if _new_idx is not None and 0 <= _new_idx < len(_map_st)
+            else None
+        )
+        if _new_station_key != _sel_station_key:
+            if _new_station_key is not None:
+                st.session_state[_stn_sel_key] = _new_station_key
             else:
                 st.session_state.pop(_stn_sel_key, None)
             st.rerun()
