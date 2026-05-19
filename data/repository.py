@@ -1,10 +1,9 @@
 import os
-import re
 from datetime import datetime
 from typing import Literal
 
 import pandas as pd
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
@@ -15,30 +14,20 @@ from crawling.models import *
 class Repository:
     # 아이템의 모델에 따라 DB에 추가하는 SQL 사전이다.
     # SQL Injection 위험을 낮추기 위해 바인딩 방식을 사용한다.
-    #
-    # CarRegistrationItem / StationItem:
-    #   모델 필드가 region(문자열)인데 DB 테이블은 region_id(FK 정수)를 요구한다.
-    #   서브쿼리로 region 문자열을 region_id 로 변환하여 저장한다.
-    # CarRegistrationItem:
-    #   같은 (region_id, stat_year) 조합이 이미 있으면 count 를 덮어쓴다 (UPSERT).
-    # FaqItem:
-    #   source_site, category 는 DB faq 테이블에 컬럼이 없으므로 SQL 에 포함하지 않는다.
-    #   SQL 에 선언된 파라미터만 바인딩되므로 모델의 나머지 필드는 자동으로 무시된다.
     MODEL_INSERT_SQL = {
-        CarRegistrationItem: '''
+        CarRegistrationItem:'''
             INSERT INTO car_registrations (
                 region_id,
                 stat_year,
                 count
             )
             VALUES (
-                (SELECT region_id FROM regions WHERE region_name = :region),
+                :region_id,
                 :stat_year,
                 :count
             )
-            ON DUPLICATE KEY UPDATE count = VALUES(count)
         ''',
-        FaqItem: '''
+        FaqItem:'''
             INSERT INTO faq (
                 question,
                 answer
@@ -48,7 +37,7 @@ class Repository:
                 :answer
             )
         ''',
-        StationItem: '''
+        StationItem:'''
             INSERT INTO hydrogen_charging_station (
                 region_id,
                 station_name,
@@ -57,19 +46,13 @@ class Repository:
                 lon
             )
             VALUES (
-                (SELECT region_id FROM regions WHERE region_name = :region),
+                :region_id,
                 :station_name,
                 :address,
                 :lat,
                 :lon
             )
         '''
-    }
-
-    # 저장 전에 실행할 선처리 SQL 사전이다.
-    # FaqItem 은 최신 크롤링 결과로 교체하기 위해 저장 전 기존 데이터를 전부 삭제한다.
-    MODEL_PRE_SQL = {
-        FaqItem: 'DELETE FROM faq'
     }
 
     # 아이템의 모델에 따라 마지막 크롤링 시간을 갱신할 레코드를 지정한다.
@@ -87,6 +70,7 @@ class Repository:
         # 프로젝트 폴더의 .env 파일을 불러온다.
         load_dotenv()
 
+        # 테스트 완료 후 기본값 삭제
         # .env 파일에서 DB 환경 변수를 불러온다.
         # 불러올 수 없는 경우 기본값을 사용한다.
         host = os.getenv('DB_HOST', 'localhost')
@@ -107,7 +91,7 @@ class Repository:
         # pool_recycle 옵션
         #   초 단위로 지정한 시간이 지나면 기존 연결을 버리고, 새 연결을 만든다.
         return create_engine(db_url, pool_pre_ping=True, pool_recycle=3600)
-
+    
     # 아이템 리스트를 DB에 저장하는 메소드이다.
     # 저장한 아이템 개수를 반환한다.
     def save_items(self, items: list) -> int:
@@ -131,11 +115,9 @@ class Repository:
         
         # 아이템의 모델에 따라 DB에 추가하는 SQL을 가져온다.
         sql = self.MODEL_INSERT_SQL[model_class]
-
-        # SQL 에 선언된 :param 이름을 추출하여 필요한 컬럼명 목록을 만든다.
-        # 기존에는 fields(model_class)로 전체 모델 필드를 사용했으나,
-        # DB에 없는 모델 필드(FaqItem.source_site 등)를 제외하기 위해 SQL 기준으로 추출한다.
-        column_names = re.findall(r':(\w+)', sql)
+        
+        # 데이터 모델 클래스의 컬럼명을 불러온다.
+        column_names = [column.name for column in fields(model_class)]
 
         # 아이템 리스트를 파라미터 리스트로 변환한다.
         params_list = [self._item_to_params(item, column_names) for item in items]
@@ -153,10 +135,6 @@ class Repository:
         #   정상 종료되면 자동으로 commit 처리된다.
         #   예외가 생기면 자동으로 rollback 처리된다.
         with self.engine.begin() as conn:
-            # 선처리 SQL이 있으면 먼저 실행한다 (예: FAQ 기존 데이터 전체 삭제).
-            if model_class in self.MODEL_PRE_SQL:
-                conn.execute(text(self.MODEL_PRE_SQL[model_class]))
-
             # SQL에 파라미터 리스트를 바인딩하여 처리한다.
             # text() : 문자열 SQL을 SQLAlchemy가 처리할 수 있는 객체로 바꾼다.
             # execute() : SQL을 실제 DB에 실행한다.
@@ -177,58 +155,7 @@ class Repository:
     def _item_to_params(self, item, column_names: list[str]) -> dict:
         raw = asdict(item)
         return {k: v for k, v in raw.items() if k in column_names}
-
-    # ── 조회 (app.py 의 db.py 함수 대체용) ─────────────────────────────────────
-
-    # car_registrations + regions 조인 결과를
-    # (region_name, stat_year, count) 컬럼의 DataFrame 으로 반환한다.
-    # db.fetch_registrations() 와 동일한 반환 형식이다.
-    def fetch_registrations(self) -> pd.DataFrame:
-        df = self.fetch_all(CarRegistrationItem)
-        return df[['region_name', 'stat_year', 'count']]
-
-    # hydrogen_charging_station + regions 조인 결과를
-    # (station_name, address, lat, lon, region_name) 컬럼의 DataFrame 으로 반환한다.
-    # db.fetch_stations() 와 동일한 반환 형식이다.
-    def fetch_stations(self) -> pd.DataFrame:
-        df = self.fetch_all(StationItem)
-        return df[['station_name', 'address', 'lat', 'lon', 'region_name']]
-
-    # faq 테이블 전체를 (question, answer) 튜플 리스트로 반환한다.
-    # db.fetch_faqs() 와 동일한 반환 형식이다.
-    def fetch_faqs(self) -> list[tuple[str, str]]:
-        with self.engine.connect() as conn:
-            rows = conn.execute(
-                text('SELECT question, answer FROM faq ORDER BY faq_id')
-            ).fetchall()
-        return [(r[0], r[1] or '') for r in rows]
-
-    # car_registration 의 마지막 크롤링 시각을 반환한다.
-    # 기록이 없으면 None 을 반환한다.
-    # db.fetch_car_last_crawled() 와 동일한 반환 형식이다.
-    def fetch_car_last_crawled(self) -> datetime | None:
-        with self.engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT last_crawled_at FROM crawl_stat WHERE target_type = 'car_registration'")
-            ).fetchone()
-        if row and row[0]:
-            return row[0] if isinstance(row[0], datetime) else datetime.fromisoformat(str(row[0]))
-        return None
-
-    # faq 의 마지막 크롤링 시각을 반환한다.
-    # 기록이 없으면 None 을 반환한다.
-    # db.fetch_faq_last_crawled() 와 동일한 반환 형식이다.
-    def fetch_faq_last_crawled(self) -> datetime | None:
-        with self.engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT last_crawled_at FROM crawl_stat WHERE target_type = 'faq'")
-            ).fetchone()
-        if row and row[0]:
-            return row[0] if isinstance(row[0], datetime) else datetime.fromisoformat(str(row[0]))
-        return None
-
-    # ── 일반 조회 ────────────────────────────────────────────────────────────────
-
+    
     # DB의 지정한 테이블에서 저장된 전체 데이터를 조회하여 반환하는 메소드이다.
     def fetch_all(
             self,
@@ -240,7 +167,7 @@ class Repository:
 
         # SQL 실행 결과를 pandas DataFrame으로 반환한다.
         return pd.read_sql(text(sql), self.engine)
-
+    
     # 데이터를 조회할 테이블과 그룹 방식에 따라 SQL을 만드는 메소드이다.
     # 그룹 방식을 정하는 group_type은 자동차 등록 정보를 조회할 때만 사용한다.
     def _build_fetch_all_sql(
@@ -249,10 +176,12 @@ class Repository:
             group_type: Literal['', 'year', 'region']=''
         ) -> str:
         # 자동차 등록 현황인 경우
+        # if issubclass(model_class, CarRegistrationItem):
         if model_class is CarRegistrationItem:
             return self._build_car_registration_sql(group_type)
-
+        
         # FAQ인 경우
+        # elif issubclass(model_class, FaqItem):
         elif model_class is FaqItem:
             return '''
             SELECT
@@ -261,8 +190,9 @@ class Repository:
                 answer
             FROM faq
             '''
-
+        
         # 충전소인 경우
+        # elif issubclass(model_class, StationItem):
         elif model_class is StationItem:
             # 지도에 나타낼 수 없는 위도와 경도가 저장되지 않은 데이터는 제외한다.
             return '''
@@ -278,20 +208,20 @@ class Repository:
             WHERE h.lat IS NOT NULL
                 AND h.lon IS NOT NULL
             '''
-
-        # CrawlStat 은 models.py 에 정의되지 않아 사용할 수 없다.
-        # elif model_class is CrawlStat:
-        #     return '''
-        #     SELECT
-        #         target_type,
-        #         last_crawled_at
-        #     FROM crawl_stat
-        #     '''
-
+        
+        # 크롤링 상태인 경우
+        elif model_class is CrawlStat:
+            return '''
+            SELECT
+                target_type,
+                last_crawled_at
+            FROM crawl_stat
+            '''
+        
         # 예외 처리
         else:
             raise TypeError(f'Unsupported model type: {model_class.__name__}')
-
+    
     # 지정한 그룹 방식에 따라 자동차 등록 정보를 모두 조회하는 SQL을 만드는 메소드이다.
     def _build_car_registration_sql(
             self,
@@ -299,32 +229,31 @@ class Repository:
         ) -> str:
         # 연도 컬럼을 기준으로 그룹핑한다.
         if group_type == 'year':
-            return '''
+            return f'''
             SELECT
                 stat_year,
-                SUM(count) AS total_count
+                SUM(count) AS total_count,
             FROM car_registrations
             GROUP BY stat_year
             ORDER BY stat_year
             '''
-
+        
         # 지역코드 컬럼을 기준으로 그룹핑한다.
-        # group_type='region' 은 지역별 전체 기간 합계를 반환한다.
-        # stat_year 기준 그룹핑이 없으므로 SELECT 에서도 stat_year 를 제외한다.
         elif group_type == 'region':
-            return '''
+            return f'''
             SELECT
                 r.region_id,
                 r.region_name,
-                SUM(c.count) AS total_count
+                c.stat_year,
+                SUM(c.count) AS total_count,
             FROM car_registrations c
             JOIN regions r USING (region_id)
             GROUP BY r.region_id, r.region_name
             ORDER BY r.region_id
             '''
-
+        
         # 컬럼이 지정되지 않으면 그룹핑 하지 않는다.
-        return '''
+        return f'''
         SELECT
             r.region_id,
             r.region_name,

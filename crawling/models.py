@@ -34,3 +34,9 @@ class StationItem:
     region: str | None      # 시도명 (서울, 경기 ...) -> regions.region_name
     # crawled_at 는 DB에 저장하지 않으므로 여기에 없음
     # 수집 시각 추적은 crawl_stat.last_crawled_at 으로 일괄 관리
+
+
+@dataclass
+class CrawlStat:
+    target_type: str
+    last_crawled_at: datetime | None

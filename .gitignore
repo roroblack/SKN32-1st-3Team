@@ -34,3 +34,4 @@ Thumbs.db
 # test
 .lagacy/
 .crawling/station_downloads/
+.crawling/tmp_down/
